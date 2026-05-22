@@ -3526,8 +3526,8 @@ function loadSettingsKeys() {
   if (ak) window._ANTHROPIC_KEY = ak;
 
   // Load SerpApi key
-
-
+  const sk = localStorage.getItem('hwa_serp_key');
+  const skEl = document.getElementById('serp-api-key');
   if (sk && skEl) skEl.value = sk;
 
   // Populate settings fields if open
@@ -3542,18 +3542,14 @@ function getAnthropicKey() {
 
 function saveSettings() {
   const ak = document.getElementById('setting-anthropic-key')?.value.trim();
-
+  const sk = document.getElementById('serp-api-key')?.value.trim();
 
   if (ak) {
     localStorage.setItem('hwa_anthropic_key', ak);
-    // Also sync to flight search field
-    const serpEl = document.getElementById('serp-api-key');
   }
   if (sk) {
-
-    // Sync to flight search field
-    const serpEl = document.getElementById('serp-api-key');
-    if (serpEl) { serpEl.value = sk; updateSerpStatus(); }
+    localStorage.setItem('hwa_serp_key', sk);
+    updateSerpStatus();
   }
 
   checkSettingsStatus();
@@ -3569,6 +3565,8 @@ function toggleVisible(id) {
 function checkSettingsStatus() {
   const ak = document.getElementById('setting-anthropic-key')?.value.trim()
           || localStorage.getItem('hwa_anthropic_key') || '';
+  const sk = document.getElementById('serp-api-key')?.value.trim()
+          || localStorage.getItem('hwa_serp_key') || '';
 
 
 
