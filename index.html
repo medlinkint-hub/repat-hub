@@ -1738,6 +1738,20 @@ The AI will provide:
       <p>Upload any medical document — AI reads and fills the entire case form automatically</p>
     </div>
 
+    <div class="card" style="margin-bottom:20px;padding:14px 18px;background:linear-gradient(135deg,rgba(38,86,166,0.07) 0%,rgba(192,57,43,0.05) 100%);border:1px solid rgba(38,86,166,0.18)">
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <div style="flex:1;min-width:240px">
+          <label style="font-size:11px;color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:0.4px">📁 Link extraction to a case</label>
+          <select id="ext-target-case" onchange="onExtractCaseChange()" style="width:100%;margin-top:4px">
+            <option value="">— No case (create new from extraction) —</option>
+          </select>
+        </div>
+        <div id="ext-target-status" style="font-size:12px;color:var(--text-dim);max-width:340px;line-height:1.5">
+          Pick a case to merge new info into. Extracted fields will update only the empty fields on the case, and the source documents are saved as attachments.
+        </div>
+      </div>
+    </div>
+
     <div class="section-grid">
       <!-- LEFT: Upload + Queue -->
       <div>
@@ -1818,18 +1832,13 @@ The AI will provide:
               <div class="ab-icon">✓</div>
               <div class="ab-text">
                 <strong id="ext-apply-title">Extraction complete</strong>
-                <span id="ext-apply-sub">Review the fields above, then apply to a new case form.</span>
+                <span id="ext-apply-sub">Review the fields above.</span>
               </div>
             </div>
-            <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap">
-              <button class="btn btn-primary" onclick="applyToNewCase()">
-                ＋ Apply to New Case Form
-              </button>
-              <button class="btn btn-ghost" onclick="applyToExistingCase()">
-                ◈ Apply to Existing Case…
-              </button>
+            <div id="ext-apply-actions" style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap">
+              <!-- Buttons rendered dynamically by onExtractCaseChange() based on whether a case is linked -->
             </div>
-            <!-- Apply to existing case selector -->
+            <!-- Legacy "apply to existing" selector — only used when no case was pre-linked -->
             <div id="ext-existing-case-row" style="display:none;margin-top:12px">
               <div class="form-group">
                 <label>Select Existing Case</label>
@@ -1945,6 +1954,7 @@ The AI will provide:
     <div id="modal-case-content"></div>
     <div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap">
       <button class="btn btn-primary btn-sm" onclick="evalFromModal()">⬡ AI Evaluate</button>
+      <button class="btn btn-ghost btn-sm" onclick="extractFromCaseModal()">⎙ Extract Documents</button>
       <button class="btn btn-ghost btn-sm" onclick="flightFromModal()">✈ Search Flights</button>
       <button class="btn btn-ghost btn-sm" onclick="docsFromModal()">⬚ Generate Docs</button>
       <button class="btn btn-ghost btn-sm" onclick="openRepatReportFromModal()">📋 Repat Report</button>
@@ -2442,6 +2452,7 @@ function navTo(view) {
   if (view === 'active-cases') refreshCasesTable();
   if (view === 'ai-eval') populateCaseSelects();
   if (view === 'documents') { populateCaseSelects(); populateDocSelect(); }
+  if (view === 'extract') populateCaseSelects();
   if (view === 'escorts') renderEscorts();
   if (view === 'new-case') { resetForm(); goStep(0); }
   if (view === 'flights') {
@@ -2817,6 +2828,82 @@ function populateCaseSelects() {
     sel.innerHTML = `<option value="">— Select a saved case —</option>` +
       cases.map(c => `<option value="${c.id}">${c.id} · ${c.firstname} ${c.lastname} (${c.originIata||'?'}→${c.destIata||'?'})</option>`).join('');
   });
+  // Doc Extraction target-case picker — preserves current selection.
+  const extSel = document.getElementById('ext-target-case');
+  if (extSel) {
+    const current = extSel.value;
+    extSel.innerHTML = `<option value="">— No case (create new from extraction) —</option>` +
+      cases.map(c => `<option value="${c.id}">${c.id} · ${c.firstname} ${c.lastname}${c.originCity ? ' · ' + c.originCity + '→' + (c.destCity||'?') : ''}</option>`).join('');
+    if (current && cases.find(c => c.id === current)) extSel.value = current;
+    onExtractCaseChange();
+  }
+}
+
+function onExtractCaseChange() {
+  const sel = document.getElementById('ext-target-case');
+  const status = document.getElementById('ext-target-status');
+  if (!sel || !status) return;
+  const id = sel.value;
+  if (id) {
+    const c = cases.find(x => x.id === id);
+    status.innerHTML = `<strong>🔗 Linked to ${c.id} · ${escHtml((c.firstname||'')+' '+(c.lastname||''))}</strong><br><span style="color:var(--text-faint)">Extraction will auto-merge new fields into this case and save the source files as attachments.</span>`;
+    status.style.color = 'var(--hwa-navy)';
+  } else {
+    status.innerHTML = 'Pick a case to merge new info into. Extracted fields will update only the empty fields on the case, and the source documents are saved as attachments.';
+    status.style.color = '';
+  }
+  // Render contextual action buttons in the post-extraction area too
+  const actions = document.getElementById('ext-apply-actions');
+  if (actions) {
+    actions.innerHTML = id ? `
+      <button class="btn btn-primary" onclick="autoMergeIntoLinkedCase()">↪ Merge into ${escHtml(id)}</button>
+      <button class="btn btn-ghost" onclick="applyToNewCase()">＋ Create new case instead</button>
+    ` : `
+      <button class="btn btn-primary" onclick="applyToNewCase()">＋ Apply to New Case Form</button>
+      <button class="btn btn-ghost" onclick="applyToExistingCase()">◈ Apply to Existing Case…</button>
+    `;
+  }
+}
+
+// Called by the case modal's "Extract Documents" shortcut.
+function openExtractionForCase(caseId) {
+  navTo('extract');
+  setTimeout(() => {
+    const sel = document.getElementById('ext-target-case');
+    if (sel) { sel.value = caseId; onExtractCaseChange(); }
+  }, 50);
+}
+
+// Called from the case modal — closes the modal first.
+function extractFromCaseModal() {
+  if (!currentModalCaseId) return;
+  const id = currentModalCaseId;
+  closeCaseModal();
+  openExtractionForCase(id);
+}
+
+// Auto-merge handler used when a case is pre-linked. Also persists source files as attachments.
+async function autoMergeIntoLinkedCase() {
+  const sel = document.getElementById('ext-target-case');
+  const id = sel?.value;
+  if (!id || !lastExtracted) return;
+  const c = cases.find(x => x.id === id);
+  if (!c) return;
+  // Track which keys actually changed so we can report meaningfully.
+  const updated = [];
+  Object.keys(lastExtracted).forEach(k => {
+    const v = lastExtracted[k];
+    if (v && v !== 'null' && (!c[k] || c[k] === '')) { c[k] = v; updated.push(k); }
+  });
+  await persistCase(c);
+  // Save the source files as attachments too (so the originals are preserved on the case).
+  let attached = 0;
+  for (const f of extractionFiles) {
+    if (f.file.size > ATTACHMENT_MAX_BYTES) continue;
+    try { await uploadAttachment(id, f.file, 'Medical report'); attached++; } catch(e) {}
+  }
+  toast(`Merged into ${id} — ${updated.length} fields updated${attached ? ', ' + attached + ' file(s) attached' : ''}.`, 'success');
+  refreshCaseModalIfOpen();
 }
 
 function populateDocSelect() {
@@ -5091,6 +5178,11 @@ async function runExtraction() {
     }
 
     renderExtractionFields(parsed);
+    // If a case was pre-linked, auto-merge immediately (no extra click required).
+    const linkedCaseId = document.getElementById('ext-target-case')?.value;
+    if (linkedCaseId && cases.find(c => c.id === linkedCaseId)) {
+      await autoMergeIntoLinkedCase();
+    }
     if (failures.length) {
       toast(`Extracted from ${perFile.length}/${extractionFiles.length} file(s). Skipped: ${failures.map(f=>f.name).join(', ')}`, 'info');
     } else {
