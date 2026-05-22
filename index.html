@@ -1323,8 +1323,8 @@ The AI will assess:
       <p>AI-powered medical flight planning — route analysis, airline recommendations, and direct booking links</p>
     </div>
 
-    <div class="section-grid">
-      <!-- LEFT: Input -->
+    <div style="display:flex;flex-direction:column;gap:18px">
+      <!-- TOP: Input -->
       <div>
         <div class="card" style="margin-bottom:18px">
           <div class="card-header"><h3>Route & Case Details</h3></div>
@@ -1392,9 +1392,9 @@ The AI will assess:
         </div>
       </div>
 
-      <!-- RIGHT: AI Output -->
+      <!-- BOTTOM: AI Output (full width) -->
       <div>
-        <div class="ai-panel" style="min-height:500px">
+        <div class="ai-panel" style="min-height:400px;width:100%">
           <div class="ai-panel-header">
             <span style="font-size:18px">⬡</span>
             <span style="font-size:15px;font-weight:600;color:#fff">AI Flight Plan</span>
@@ -1403,7 +1403,7 @@ The AI will assess:
               <button class="btn btn-ghost btn-sm btn-icon" onclick="copyFlightPlan()" title="Copy" style="background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.15);color:rgba(255,255,255,0.7)">⎘</button>
             </div>
           </div>
-          <div class="ai-output" id="flight-plan-output">Awaiting route input.
+          <div class="ai-output" id="flight-plan-output" style="white-space:pre-wrap;font-size:14px;line-height:1.6;padding:18px 22px">Awaiting route input.
 
 Enter origin and destination airports (IATA codes), departure date, and cabin class — or load a saved case to include the full clinical profile.
 
