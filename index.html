@@ -1688,6 +1688,30 @@ The AI will provide:
         </div>
       </div>
 
+      <div id="doc-airline-row" class="form-group" style="margin-bottom:16px;display:none">
+        <label>Airline (MEDIF format) <span style="font-weight:400;color:var(--text-dim);font-size:11px">— picks the airline's MEDIF layout and recipient</span></label>
+        <select id="doc-airline">
+          <option value="">— Generic IATA MEDIF (no airline) —</option>
+          <optgroup label="European majors">
+            <option value="aegean">Aegean Airlines</option>
+            <option value="lufthansa">Lufthansa</option>
+            <option value="swiss">SWISS</option>
+            <option value="austrian">Austrian Airlines</option>
+            <option value="airfrance">Air France</option>
+            <option value="klm">KLM</option>
+            <option value="ba">British Airways</option>
+            <option value="ita">ITA Airways</option>
+          </optgroup>
+          <optgroup label="Turkish & low-cost">
+            <option value="turkish">Turkish Airlines</option>
+            <option value="pegasus">Pegasus Airlines</option>
+            <option value="ryanair">Ryanair</option>
+            <option value="easyjet">easyJet</option>
+            <option value="wizz">Wizz Air</option>
+          </optgroup>
+        </select>
+      </div>
+
       <button class="btn btn-gold" onclick="generateDocument()" style="width:100%;justify-content:center">
         <span class="spinner" id="doc-spinner" style="display:none"></span>
         ⬡ <span data-i18n="generate_doc">Generate Document with AI</span>
@@ -2489,7 +2513,28 @@ function selectTransport(el, mode) {
 function selectDocType(el, type) {
   document.querySelectorAll('.doc-type-card').forEach(c => c.classList.remove('active'));
   el.classList.add('active'); activeDocType = type;
+  // Show the airline picker only when MEDIF is the active doc type.
+  const row = document.getElementById('doc-airline-row');
+  if (row) row.style.display = (type === 'medif') ? 'block' : 'none';
 }
+
+// Airline registry — used for MEDIF formatting and (later) Outlook email recipient.
+// Email + medifNotes will be filled in once you send the real MEDIF PDFs and contacts.
+const AIRLINE_REGISTRY = {
+  aegean:    { name: 'Aegean Airlines',    code: 'A3', email: '', medifNotes: 'Standard IATA MEDIF; Aegean header.' },
+  lufthansa: { name: 'Lufthansa',          code: 'LH', email: '', medifNotes: 'Lufthansa MEDIF (bilingual DE/EN); 4 pages; declaration by treating physician.' },
+  swiss:     { name: 'SWISS',              code: 'LX', email: '', medifNotes: 'SWISS MEDIF; uses Lufthansa Group MEDIF format.' },
+  austrian:  { name: 'Austrian Airlines',  code: 'OS', email: '', medifNotes: 'Austrian MEDIF; uses Lufthansa Group MEDIF format.' },
+  airfrance: { name: 'Air France',         code: 'AF', email: '', medifNotes: 'INCAD/Air France MEDIF; bilingual FR/EN; SAPHIR medical clearance.' },
+  klm:       { name: 'KLM',                code: 'KL', email: '', medifNotes: 'KLM MEDA form; aligned with AF-KL group format.' },
+  ba:        { name: 'British Airways',    code: 'BA', email: '', medifNotes: 'BA MEDIF; passenger medical clearance unit (PMCU).' },
+  ita:       { name: 'ITA Airways',        code: 'AZ', email: '', medifNotes: 'ITA MEDIF; bilingual IT/EN.' },
+  turkish:   { name: 'Turkish Airlines',   code: 'TK', email: '', medifNotes: 'Turkish Airlines MEDIF; bilingual TR/EN.' },
+  pegasus:   { name: 'Pegasus Airlines',   code: 'PC', email: '', medifNotes: 'Pegasus medical clearance form (simpler than full IATA MEDIF).' },
+  ryanair:   { name: 'Ryanair',            code: 'FR', email: '', medifNotes: 'Ryanair uses a Fitness-to-Fly form rather than a full MEDIF.' },
+  easyjet:   { name: 'easyJet',            code: 'U2', email: '', medifNotes: 'easyJet MEDIF + assisted travel declaration.' },
+  wizz:      { name: 'Wizz Air',           code: 'W6', email: '', medifNotes: 'Wizz Air medical fitness declaration.' }
+};
 
 // ══════════════════════════════════════════════════════════════════
 // FORM DATA
@@ -2782,7 +2827,9 @@ function renderSavedDocsBlock(c) {
   const rows = docs.map((d, idx) => `
     <div style="display:flex;align-items:center;gap:10px;padding:9px 11px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px">
       <div style="flex:1;min-width:0">
-        <div style="font-size:13px;font-weight:600;color:var(--text)">${names[d.type] || d.type}</div>
+        <div style="font-size:13px;font-weight:600;color:var(--text)">
+          ${names[d.type] || d.type}${d.airline ? ` <span style="color:var(--hwa-red);font-weight:500">· ${d.airline}</span>` : ''}
+        </div>
         <div style="font-size:11px;color:var(--text-dim)">${new Date(d.generatedAt).toLocaleString()} · ${(d.lang||'').toUpperCase()} · ${d.content.length.toLocaleString()} chars</div>
       </div>
       <button class="btn btn-ghost btn-sm" onclick="viewSavedDoc('${c.id}',${idx})" title="View">👁</button>
@@ -3583,15 +3630,34 @@ async function generateDocument() {
   const docType = activeDocType;
   const caseId = document.getElementById('doc-case-select').value;
   const docLang = document.getElementById('doc-lang').value;
+  const airlineKey = document.getElementById('doc-airline')?.value || '';
+  const airline = airlineKey ? AIRLINE_REGISTRY[airlineKey] : null;
   const c = caseId ? cases.find(x => x.id === caseId) : (cases.length ? cases[0] : null);
 
   const spinner = document.getElementById('doc-spinner');
   spinner.style.display = 'inline-block';
   document.getElementById('doc-output').textContent = 'Generating document with AI...';
 
+  const medifPrompt = airline
+    ? `Produce a completed MEDIF (Medical Information Form) for **${airline.name} (${airline.code})** for this patient.
+
+Airline-specific guidance: ${airline.medifNotes}
+
+Format as a fully-completed airline MEDIF document. Structure:
+- Header: airline name and form title (mark "${airline.name} — MEDIF / Medical Information Form")
+- Part 1 — Passenger details (name, DOB, nationality, ticket/PNR placeholder, contact)
+- Part 2 — Medical condition: diagnosis, ICD-10 if known, date of onset, current treatment, prognosis, recent vitals
+- Part 3 — Special assistance required (wheelchair WCHR/WCHS/WCHC, stretcher, escort, oxygen flow rate, infection isolation)
+- Part 4 — Medical equipment carried on board (POC, CPAP, syringes, etc.)
+- Part 5 — Treating physician declaration: name, qualifications, contact, signature block, date
+- HealthWatch Assistance coordinator block at the bottom
+
+Use the case data faithfully. Leave [SIGNATURE], [STAMP], [DATE_OF_ISSUE] as bracketed placeholders. Write in ${docLang}. Do NOT include any preamble — output the form directly.`
+    : `Complete a standard IATA MEDIF (Medical Information Form) for this patient for submission to the airline. Include all standard MEDIF sections: Part 1 (passenger information), Part 2 (medical condition and treatment), Part 3 (special assistance required), Part 4 (medical equipment), and physician declaration. Write in ${docLang}.`;
+
   const docPrompts = {
     ftf: `Generate a professional Fit-to-Fly medical certificate for this patient. Include: patient details, diagnosis, clinical assessment, fitness determination (fit / fit with conditions / unfit), required in-flight conditions, and attending physician sign-off block. Use formal medical language. Format as a proper medical certificate in ${docLang}.`,
-    medif: `Complete a standard MEDIF (Medical Information Form) for this patient for submission to the airline. Include all standard MEDIF sections: Part 1 (passenger information), Part 2 (medical condition and treatment), Part 3 (special assistance required), Part 4 (medical equipment), and physician declaration. Write in ${docLang}.`,
+    medif: medifPrompt,
     'escort-brief': `Write a comprehensive medical escort briefing document for the assigned escort. Include: mission overview, patient summary, clinical background and current status, in-flight medical priorities, medications and equipment checklist, emergency protocols, destination hospital details, and emergency contact numbers (use placeholders). Professional tone, written in ${docLang}.`,
     'cost-estimate': `Produce a professional cost estimate report for the insurer covering this medical repatriation. Include: case summary, itemised cost breakdown (medical escort fees, airline tickets/stretcher/air ambulance, ground transfers, equipment rental, hospital pre-clearance fees, coordination fees), total estimate, validity period, and HWA company details. Use EUR. Write in ${docLang}.`
   };
@@ -3624,11 +3690,13 @@ async function generateDocument() {
       c.documents.unshift({
         type: docType,
         lang: docLang,
+        airline: airline ? airline.name : null,
+        airlineKey: airlineKey || null,
         content,
         generatedAt: new Date().toISOString()
       });
       await persistCase(c);
-      toast('Document generated and saved to case.', 'success');
+      toast(`Document generated and saved to case${airline ? ' (' + airline.name + ')' : ''}.`, 'success');
     } else {
       toast('Document generated (no case selected — not saved).', 'info');
     }
