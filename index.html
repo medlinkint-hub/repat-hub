@@ -1929,6 +1929,21 @@ The AI will provide:
   </div>
 </div>
 
+<!-- ─── Saved Document Viewer Modal ─── -->
+<div class="modal-backdrop" id="doc-viewer-modal" style="display:none" onclick="if(event.target===this)closeDocViewer()">
+  <div class="modal-box" style="max-width:780px">
+    <div class="modal-header">
+      <h2 id="doc-viewer-title">Document</h2>
+      <button class="modal-close" onclick="closeDocViewer()">✕</button>
+    </div>
+    <pre id="doc-viewer-body" style="white-space:pre-wrap;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.55;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:16px;max-height:60vh;overflow:auto;color:var(--text)"></pre>
+    <div style="display:flex;gap:10px;margin-top:14px;justify-content:flex-end">
+      <button class="btn btn-ghost btn-sm" onclick="navigator.clipboard.writeText(document.getElementById('doc-viewer-body').textContent).then(()=>toast('Copied.','success'))">📋 Copy</button>
+      <button class="btn btn-primary btn-sm" onclick="downloadCurrentViewerDoc()">⬇ Download</button>
+    </div>
+  </div>
+</div>
+
 <!-- ─── Repatriation Report Modal ─── -->
 <div class="modal-backdrop" id="repat-report-modal" style="display:none" onclick="if(event.target===this)closeRepatReport()">
   <div class="modal-box rr-modal" id="rr-modal-box">
@@ -2748,6 +2763,7 @@ function openCaseModal(id) {
       ${reviewRow('Transport', c.transport||'—')} ${reviewRow('Status', c.status||'new')}
     </div>
     ${c.clinicalSummary ? `<div style="background:rgba(0,0,0,0.2);padding:12px;border-radius:8px;font-size:12px;color:var(--text-dim)">${c.clinicalSummary}</div>` : ''}
+    ${renderSavedDocsBlock(c)}
     <div style="margin-top:16px">
       <label style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px">Status</label>
       <select id="modal-status-select" onchange="updateCaseStatus('${id}',this.value)" style="margin-top:6px;width:100%">
@@ -2756,6 +2772,39 @@ function openCaseModal(id) {
     </div>
   `;
   document.getElementById('case-modal').style.display = 'flex';
+}
+
+function renderSavedDocsBlock(c) {
+  const docs = Array.isArray(c.documents) ? c.documents : [];
+  const hasReport = !!c.repatReport;
+  if (!docs.length && !hasReport) return '';
+  const names = { ftf:'Fit-to-Fly', medif:'MEDIF', 'escort-brief':'Escort Briefing', 'cost-estimate':'Cost Estimate' };
+  const rows = docs.map((d, idx) => `
+    <div style="display:flex;align-items:center;gap:10px;padding:9px 11px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600;color:var(--text)">${names[d.type] || d.type}</div>
+        <div style="font-size:11px;color:var(--text-dim)">${new Date(d.generatedAt).toLocaleString()} · ${(d.lang||'').toUpperCase()} · ${d.content.length.toLocaleString()} chars</div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="viewSavedDoc('${c.id}',${idx})" title="View">👁</button>
+      <button class="btn btn-ghost btn-sm" onclick="downloadSavedDoc('${c.id}',${idx})" title="Download">⬇</button>
+      <button class="btn btn-danger btn-sm" onclick="deleteSavedDoc('${c.id}',${idx})" title="Delete">✕</button>
+    </div>
+  `).join('');
+  const reportRow = hasReport ? `
+    <div style="display:flex;align-items:center;gap:10px;padding:9px 11px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600;color:var(--text)">📋 Repatriation Report</div>
+        <div style="font-size:11px;color:var(--text-dim)">Last updated ${new Date(c.repatReport.updatedAt || Date.now()).toLocaleString()}${c.repatReport.outcome ? ' · ' + c.repatReport.outcome : ''}</div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="openRepatReportFromModal()" title="Open">↗ Open</button>
+    </div>
+  ` : '';
+  return `
+    <div style="margin-top:18px">
+      <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:8px">Saved documents (${docs.length}${hasReport ? ' + report' : ''})</div>
+      <div style="display:flex;flex-direction:column;gap:6px">${rows}${reportRow}</div>
+    </div>
+  `;
 }
 
 function closeCaseModal() {
@@ -3567,13 +3616,69 @@ async function generateDocument() {
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error.message);
-    document.getElementById('doc-output').textContent = data.content[0].text;
-    toast('Document generated.', 'success');
+    const content = data.content[0].text;
+    document.getElementById('doc-output').textContent = content;
+    // Persist onto the case so it's visible next time the case is opened.
+    if (c) {
+      if (!Array.isArray(c.documents)) c.documents = [];
+      c.documents.unshift({
+        type: docType,
+        lang: docLang,
+        content,
+        generatedAt: new Date().toISOString()
+      });
+      await persistCase(c);
+      toast('Document generated and saved to case.', 'success');
+    } else {
+      toast('Document generated (no case selected — not saved).', 'info');
+    }
   } catch(e) {
     document.getElementById('doc-output').textContent = `Error: ${e.message}\n\nCheck your Anthropic API key.`;
     toast('Document generation failed.', 'error');
   }
   spinner.style.display = 'none';
+}
+
+// ─── Saved documents on the case ───
+function viewSavedDoc(caseId, idx) {
+  const c = cases.find(x => x.id === caseId);
+  if (!c || !c.documents || !c.documents[idx]) return;
+  const d = c.documents[idx];
+  const names = { ftf:'Fit-to-Fly', medif:'MEDIF', 'escort-brief':'Escort Briefing', 'cost-estimate':'Cost Estimate' };
+  document.getElementById('doc-viewer-title').textContent = `${names[d.type] || d.type} · ${new Date(d.generatedAt).toLocaleString()}`;
+  document.getElementById('doc-viewer-body').textContent = d.content;
+  document.getElementById('doc-viewer-modal').dataset.caseId = caseId;
+  document.getElementById('doc-viewer-modal').dataset.idx = idx;
+  document.getElementById('doc-viewer-modal').style.display = 'flex';
+}
+function closeDocViewer() {
+  document.getElementById('doc-viewer-modal').style.display = 'none';
+}
+function downloadSavedDoc(caseId, idx) {
+  const c = cases.find(x => x.id === caseId);
+  if (!c || !c.documents || !c.documents[idx]) return;
+  const d = c.documents[idx];
+  const names = { ftf:'Fit-to-Fly', medif:'MEDIF', 'escort-brief':'Escort-Briefing', 'cost-estimate':'Cost-Estimate' };
+  const blob = new Blob([d.content], { type:'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `HWA_${names[d.type]||d.type}_${caseId}_${d.generatedAt.slice(0,10)}.txt`;
+  a.click();
+  toast('Downloaded.', 'success');
+}
+function downloadCurrentViewerDoc() {
+  const m = document.getElementById('doc-viewer-modal');
+  downloadSavedDoc(m.dataset.caseId, parseInt(m.dataset.idx, 10));
+}
+async function deleteSavedDoc(caseId, idx) {
+  if (!confirm('Delete this saved document?')) return;
+  const c = cases.find(x => x.id === caseId);
+  if (!c || !c.documents) return;
+  c.documents.splice(idx, 1);
+  await persistCase(c);
+  toast('Document deleted.', 'info');
+  // Refresh the modal if it's open on this case
+  if (currentModalCaseId === caseId) openCaseModal(caseId);
 }
 
 function copyDoc() {
