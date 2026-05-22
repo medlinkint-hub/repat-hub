@@ -3465,6 +3465,94 @@ function ieClear() {
   document.querySelectorAll('.ie-filled').forEach(el => el.classList.remove('ie-filled'));
 }
 
+// ─── Shared extraction helpers — one Claude request per file, then merge.
+// This avoids the 200K-token-per-request ceiling when several large PDFs are uploaded.
+async function readFileAsBase64(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload  = () => res(r.result.split(',')[1]);
+    r.onerror = () => rej(new Error('Read failed'));
+    r.readAsDataURL(file);
+  });
+}
+async function readFileAsText(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload  = () => res(r.result);
+    r.onerror = () => rej(new Error('Read failed'));
+    r.readAsText(file);
+  });
+}
+
+async function extractOneFile(fileObj, lang) {
+  // Accept either a raw File or a wrapped { file, name, type } object.
+  const file = fileObj.file || fileObj;
+  const name = fileObj.name || file.name;
+  const type = fileObj.type || file.type;
+  const isImage = type?.startsWith('image/');
+  const isPdf   = type === 'application/pdf' || name.toLowerCase().endsWith('.pdf');
+
+  const content = [];
+  if (isImage) {
+    const b64 = await readFileAsBase64(file);
+    content.push({ type:'image', source:{ type:'base64', media_type: type, data: b64 } });
+    content.push({ type:'text', text:`[Image: "${name}"]` });
+  } else if (isPdf) {
+    const b64 = await readFileAsBase64(file);
+    content.push({ type:'document', source:{ type:'base64', media_type:'application/pdf', data: b64 } });
+    content.push({ type:'text', text:`[PDF: "${name}"]` });
+  } else {
+    const text = await readFileAsText(file);
+    content.push({ type:'text', text:`=== ${name} ===\n${text}` });
+  }
+
+  const langHint = lang !== 'auto' ? `The document is in ${lang}.` : 'Auto-detect the language.';
+  content.push({ type:'text', text:`
+${langHint}
+Extract ALL available information from this single document and return ONLY a valid JSON object with these exact keys (null for not found):
+{"firstname":null,"lastname":null,"dob":null,"nationality":null,"passport":null,"contact":null,"insurer":null,"policy":null,"diagnosis":null,"icd":null,"clinicalSummary":null,"bp":null,"hr":null,"spo2":null,"temp":null,"gcs":null,"rr":null,"mobility":null,"o2":null,"psych":null,"infect":null,"currentHosp":null,"originCity":null,"originCountry":null,"originIata":null,"destCity":null,"destCountry":null,"destHosp":null,"confidence":null,"notes":null}
+Rules: dob=YYYY-MM-DD if possible; mobility=walking/seat/stretcher; o2=none/low/high/ventilator; psych=none/low/high; infect=none/yes; confidence=percentage string; notes=brief extraction quality note. Return ONLY the JSON, no markdown, no explanation.`
+  });
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': getAnthropicKey(),
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1000,
+      messages: [{ role:'user', content }]
+    })
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message);
+  let raw = data.content[0].text.trim().replace(/^```json?\s*/i,'').replace(/```\s*$/,'').trim();
+  return JSON.parse(raw);
+}
+
+function mergeExtractions(perFile) {
+  // perFile: [{ name, data }]. For each field, keep the first non-null value
+  // (earlier files take precedence). Average confidence, concatenate notes.
+  const fields = ['firstname','lastname','dob','nationality','passport','contact','insurer','policy','diagnosis','icd','clinicalSummary','bp','hr','spo2','temp','gcs','rr','mobility','o2','psych','infect','currentHosp','originCity','originCountry','originIata','destCity','destCountry','destHosp'];
+  const merged = {};
+  fields.forEach(k => {
+    merged[k] = null;
+    for (const r of perFile) {
+      const v = r.data?.[k];
+      if (v && v !== 'null') { merged[k] = v; break; }
+    }
+  });
+  const confs = perFile.map(r => parseInt(String(r.data?.confidence||'').replace(/[^\d]/g,''), 10)).filter(n => !isNaN(n));
+  merged.confidence = confs.length ? Math.round(confs.reduce((a,b)=>a+b,0)/confs.length) + '%' : null;
+  merged.notes = perFile.map(r => `[${r.name}] ${r.data?.notes||'OK'}`).join(' · ');
+  merged.extractionNotes = merged.notes;
+  return merged;
+}
+
 async function ieRunExtraction() {
   if (!ieFiles.length) return;
   const btn     = document.getElementById('ie-extract-btn');
@@ -3477,66 +3565,23 @@ async function ieRunExtraction() {
   document.getElementById('ie-status-dot').style.background = 'var(--amber)';
   document.getElementById('ie-status-text').textContent = 'Extracting…';
 
-  const msgContent = [];
-
   try {
-    for (const f of ieFiles) {
-      const isImage = f.type?.startsWith('image/');
-      const isPdf   = f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf');
-      const b64     = await new Promise((res,rej) => {
-        const r = new FileReader();
-        r.onload  = () => res(r.result.split(',')[1]);
-        r.onerror = () => rej(new Error('Read failed'));
-        r.readAsDataURL(f);
-      });
-
-      if (isImage) {
-        msgContent.push({ type:'image', source:{ type:'base64', media_type: f.type, data: b64 } });
-        msgContent.push({ type:'text', text:`[Image: "${f.name}"]` });
-      } else if (isPdf) {
-        msgContent.push({ type:'document', source:{ type:'base64', media_type:'application/pdf', data: b64 } });
-        msgContent.push({ type:'text', text:`[PDF: "${f.name}"]` });
-      } else {
-        const text = await new Promise((res,rej) => {
-          const r = new FileReader();
-          r.onload  = () => res(r.result);
-          r.onerror = () => rej(new Error('Read failed'));
-          r.readAsText(f);
-        });
-        msgContent.push({ type:'text', text:`=== ${f.name} ===\n${text}` });
+    const perFile = [];
+    const failures = [];
+    for (let i = 0; i < ieFiles.length; i++) {
+      const f = ieFiles[i];
+      summary.textContent = `Extracting ${i+1}/${ieFiles.length}: ${f.name}`;
+      try {
+        const result = await extractOneFile(f, lang);
+        perFile.push({ name: f.name, data: result });
+      } catch (err) {
+        failures.push({ name: f.name, error: err.message });
       }
     }
-
-    const langHint = lang !== 'auto' ? `The document is in ${lang}.` : 'Auto-detect the language.';
-    msgContent.push({ type:'text', text:`
-${langHint}
-Extract ALL available information from the document(s) above and return ONLY a valid JSON object with these exact keys (null for not found):
-{"firstname":null,"lastname":null,"dob":null,"nationality":null,"passport":null,"contact":null,"insurer":null,"policy":null,"diagnosis":null,"icd":null,"clinicalSummary":null,"bp":null,"hr":null,"spo2":null,"temp":null,"gcs":null,"rr":null,"mobility":null,"o2":null,"psych":null,"infect":null,"currentHosp":null,"originCity":null,"originCountry":null,"originIata":null,"destCity":null,"destCountry":null,"destHosp":null,"confidence":null,"notes":null}
-Rules: dob=YYYY-MM-DD if possible; mobility=walking/seat/stretcher; o2=none/low/high/ventilator; psych=none/low/high; infect=none/yes; confidence=percentage string; notes=brief extraction quality note. Return ONLY the JSON, no markdown, no explanation.`
-    });
-
-    summary.textContent = 'Sending to AI…';
-
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': getAnthropicKey(),
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        messages: [{ role:'user', content: msgContent }]
-      })
-    });
-
-    const data = await res.json();
-    if (data.error) throw new Error(data.error.message);
-
-    let raw = data.content[0].text.trim().replace(/^```json?\s*/i,'').replace(/```\s*$/,'').trim();
-    const d = JSON.parse(raw);
+    if (!perFile.length) {
+      throw new Error(failures.map(x => `${x.name}: ${x.error}`).join('; ') || 'No data extracted.');
+    }
+    const d = mergeExtractions(perFile);
 
     // Apply to form fields
     const filled = [];
@@ -3980,146 +4025,54 @@ async function runExtraction() {
   document.getElementById('ext-fields-grid').innerHTML = '';
 
   const lang = document.getElementById('ext-lang').value;
-  const messageContent = [];
   const allRawText = [];
 
   try {
-    // Step 1: Process each file
+    const perFile = [];
+    const failures = [];
+    // Capture readable text where possible (for the Raw Text panel).
     for (let i = 0; i < extractionFiles.length; i++) {
       const f = extractionFiles[i];
-      setProgress(Math.round((i / extractionFiles.length) * 40), `Reading file ${i+1}/${extractionFiles.length}: ${f.name}`);
-
-      const isImage = f.type.startsWith('image/');
-      const isPdf = f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf');
       const isText = f.type.startsWith('text/') || f.name.toLowerCase().endsWith('.txt');
-
-      if (isImage) {
-        const b64 = await fileToBase64(f.file);
-        messageContent.push({
-          type: 'image',
-          source: { type: 'base64', media_type: f.type, data: b64 }
-        });
-        messageContent.push({ type: 'text', text: `[Above: image file "${f.name}"]` });
-
-      } else if (isPdf) {
-        const b64 = await fileToBase64(f.file);
-        messageContent.push({
-          type: 'document',
-          source: { type: 'base64', media_type: 'application/pdf', data: b64 }
-        });
-        messageContent.push({ type: 'text', text: `[Above: PDF file "${f.name}"]` });
-
-      } else if (isText) {
-        const text = await fileToText(f.file);
-        allRawText.push(`=== ${f.name} ===\n${text}`);
-        messageContent.push({ type: 'text', text: `=== Document: ${f.name} ===\n${text}\n=== End of ${f.name} ===` });
-
-      } else {
-        // Try reading as text anyway
-        try {
-          const text = await fileToText(f.file);
-          allRawText.push(`=== ${f.name} ===\n${text}`);
-          messageContent.push({ type: 'text', text: `=== Document: ${f.name} ===\n${text}\n=== End of ${f.name} ===` });
-        } catch {
-          messageContent.push({ type: 'text', text: `[File "${f.name}" could not be read as text]` });
-        }
+      if (isText) {
+        try { allRawText.push(`=== ${f.name} ===\n` + await fileToText(f.file)); } catch {}
       }
     }
 
-    setProgress(50, 'Sending to AI for medical extraction…');
+    // One Claude request per file, then merge.
+    for (let i = 0; i < extractionFiles.length; i++) {
+      const f = extractionFiles[i];
+      const base = Math.round((i / extractionFiles.length) * 90);
+      setProgress(base, `Extracting ${i+1}/${extractionFiles.length}: ${f.name}`);
+      try {
+        const result = await extractOneFile(f, lang);
+        perFile.push({ name: f.name, data: result });
+      } catch (err) {
+        failures.push({ name: f.name, error: err.message });
+      }
+    }
 
-    // Step 2: Add extraction instruction
-    const docLangHint = lang !== 'auto' ? `The documents are primarily in ${lang}.` : 'Auto-detect the language.';
-    messageContent.push({
-      type: 'text',
-      text: `You are a senior medical data extraction specialist. ${docLangHint}
+    if (!perFile.length) {
+      throw new Error(failures.map(x => `${x.name}: ${x.error}`).join('; ') || 'No data extracted.');
+    }
 
-Extract ALL available medical and patient information from the provided documents and return ONLY a valid JSON object with these exact keys (use null for fields not found):
-
-{
-  "firstname": null,
-  "lastname": null,
-  "dob": null,
-  "nationality": null,
-  "passport": null,
-  "contact": null,
-  "insurer": null,
-  "policy": null,
-  "diagnosis": null,
-  "icd": null,
-  "clinicalSummary": null,
-  "bp": null,
-  "hr": null,
-  "spo2": null,
-  "temp": null,
-  "gcs": null,
-  "rr": null,
-  "mobility": null,
-  "o2": null,
-  "psych": null,
-  "infect": null,
-  "currentHosp": null,
-  "originCity": null,
-  "originCountry": null,
-  "originIata": null,
-  "destCity": null,
-  "destCountry": null,
-  "destHosp": null,
-  "confidence": null,
-  "extractionNotes": null
-}
-
-RULES:
-- dob: format as YYYY-MM-DD if possible
-- mobility: one of "walking" / "seat" / "stretcher" — infer from clinical description
-- o2: one of "none" / "low" / "high" / "ventilator" — infer from clinical description
-- psych: one of "none" / "low" / "high"
-- infect: one of "none" / "yes"
-- clinicalSummary: comprehensive clinical narrative combining all relevant findings from the document(s)
-- icd: the ICD-10 code if mentioned, or your best inference if diagnosis is clear
-- confidence: overall extraction confidence as percentage string e.g. "87%"
-- extractionNotes: brief note about document quality, language, missing info, or inferences made
-- Return ONLY the JSON object. No preamble, no explanation, no markdown fences.`
-    });
-
-    setProgress(70, 'AI reading and extracting data…');
-
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': getAnthropicKey(),
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1200,
-        messages: [{ role: 'user', content: messageContent }]
-      })
-    });
-
-    setProgress(90, 'Parsing extracted fields…');
-
-    const data = await res.json();
-    if (data.error) throw new Error(data.error.message);
-
-    let raw = data.content[0].text.trim();
-    // Strip any accidental markdown fences
-    raw = raw.replace(/^```json?\s*/i, '').replace(/```\s*$/,'').trim();
-    const parsed = JSON.parse(raw);
-
+    setProgress(95, 'Merging results from all files…');
+    const parsed = mergeExtractions(perFile);
+    parsed.extractionNotes = parsed.notes;
     lastExtracted = parsed;
-    setProgress(100, 'Extraction complete.');
+    setProgress(100, `Extraction complete from ${perFile.length}/${extractionFiles.length} file(s).`);
 
-    // Show raw text if available
     if (allRawText.length) {
       document.getElementById('ext-raw-card').style.display = 'block';
       document.getElementById('ext-raw-box').textContent = allRawText.join('\n\n');
     }
 
     renderExtractionFields(parsed);
-    toast('Extraction complete — review and apply to case form.', 'success');
+    if (failures.length) {
+      toast(`Extracted from ${perFile.length}/${extractionFiles.length} file(s). Skipped: ${failures.map(f=>f.name).join(', ')}`, 'info');
+    } else {
+      toast('Extraction complete — review and apply to case form.', 'success');
+    }
 
   } catch(e) {
     setProgress(0, '');
