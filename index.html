@@ -1937,7 +1937,7 @@ The AI will provide:
 
 <!-- CASE DETAIL MODAL -->
 <div class="modal-backdrop" id="case-modal" style="display:none" onclick="if(event.target===this)closeCaseModal()">
-  <div class="modal-box">
+  <div class="modal-box" style="max-width:820px">
     <div class="modal-header">
       <h2 id="modal-case-title">Case Details</h2>
       <button class="modal-close" onclick="closeCaseModal()">✕</button>
@@ -1949,6 +1949,41 @@ The AI will provide:
       <button class="btn btn-ghost btn-sm" onclick="docsFromModal()">⬚ Generate Docs</button>
       <button class="btn btn-ghost btn-sm" onclick="openRepatReportFromModal()">📋 Repat Report</button>
       <button class="btn btn-danger btn-sm" onclick="deleteCase()">🗑 Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Hotel Add/Edit Modal ─── -->
+<div class="modal-backdrop" id="hotel-form-modal" style="display:none" onclick="if(event.target===this)closeHotelForm()">
+  <div class="modal-box" style="max-width:560px">
+    <div class="modal-header">
+      <h2>🏨 Add hotel booking</h2>
+      <button class="modal-close" onclick="closeHotelForm()">✕</button>
+    </div>
+    <div class="rr-grid-2">
+      <div class="rr-field"><label>For</label>
+        <select id="hf-for">
+          <option value="patient">🧑 Patient</option>
+          <option value="escort">🩺 Escort</option>
+        </select>
+      </div>
+      <div class="rr-field"><label>Hotel name *</label><input id="hf-name" placeholder="e.g. Holiday Inn ATH Airport"></div>
+      <div class="rr-field rr-col-3" style="grid-column:span 2"><label>Address</label><input id="hf-address" placeholder="Street, city, country"></div>
+      <div class="rr-field"><label>Check-in</label><input id="hf-checkin" type="date"></div>
+      <div class="rr-field"><label>Check-out</label><input id="hf-checkout" type="date"></div>
+      <div class="rr-field"><label>Booking reference</label><input id="hf-ref" placeholder="e.g. BKG-12345"></div>
+      <div class="rr-field"><label>Cost</label>
+        <div style="display:flex;gap:6px">
+          <select id="hf-currency" style="width:80px"><option>EUR</option><option>USD</option><option>GBP</option><option>TRY</option></select>
+          <input id="hf-cost" type="number" step="0.01" placeholder="0.00" style="flex:1">
+        </div>
+      </div>
+      <div class="rr-field rr-col-3" style="grid-column:span 2"><label>Contact (phone / email)</label><input id="hf-contact" placeholder="Reception phone or email"></div>
+      <div class="rr-field rr-col-3" style="grid-column:span 2"><label>Notes</label><textarea id="hf-notes" rows="2" placeholder="Room type, special requirements, ground-transport pickup, etc."></textarea></div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end">
+      <button class="btn btn-ghost btn-sm" onclick="closeHotelForm()">Cancel</button>
+      <button class="btn btn-primary btn-sm" onclick="saveHotel()">💾 Save hotel</button>
     </div>
   </div>
 </div>
@@ -2812,6 +2847,7 @@ function openCaseModal(id) {
     </div>
     ${c.clinicalSummary ? `<div style="background:rgba(0,0,0,0.2);padding:12px;border-radius:8px;font-size:12px;color:var(--text-dim)">${c.clinicalSummary}</div>` : ''}
     ${renderRepatriationDetailsBlock(c)}
+    ${renderHotelsBlock(c)}
     ${renderSavedDocsBlock(c)}
     <div style="margin-top:16px">
       <label style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px">Status</label>
@@ -2874,6 +2910,102 @@ function renderRepatriationDetailsBlock(c) {
       </div>`;
   }).join('');
   return blocks;
+}
+
+// ─── Hotels ───
+function renderHotelsBlock(c) {
+  const hotels = Array.isArray(c.hotels) ? c.hotels : [];
+  const cards = hotels.map((h, idx) => {
+    const isPatient = h.for === 'patient';
+    const tag = isPatient
+      ? '<span style="background:rgba(38,86,166,0.15);color:#2656a6;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px">🧑 Patient</span>'
+      : '<span style="background:rgba(192,57,43,0.12);color:var(--hwa-red);padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px">🩺 Escort</span>';
+    const dates = (h.checkin || h.checkout) ? `${h.checkin || '?'} → ${h.checkout || '?'}` : '';
+    const cost = h.cost ? ` · ${h.currency || '€'}${h.cost}` : '';
+    return `
+      <div style="display:flex;align-items:flex-start;gap:12px;padding:11px 13px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+            ${tag}
+            <div style="font-size:13px;font-weight:600;color:var(--text)">${escHtml(h.name || '(unnamed)')}</div>
+          </div>
+          <div style="font-size:11px;color:var(--text-dim);line-height:1.55">
+            ${dates ? `📅 ${escHtml(dates)}<br>` : ''}
+            ${h.address ? `📍 ${escHtml(h.address)}<br>` : ''}
+            ${h.ref ? `Ref ${escHtml(h.ref)}${cost}<br>` : (cost ? cost.replace(/^ · /,'') + '<br>' : '')}
+            ${h.contact ? `☎ ${escHtml(h.contact)}<br>` : ''}
+            ${h.notes ? `<span style="color:var(--text-faint)">${escHtml(h.notes)}</span>` : ''}
+          </div>
+        </div>
+        <button class="btn btn-danger btn-sm" onclick="deleteHotel('${c.id}',${idx})" title="Delete">✕</button>
+      </div>
+    `;
+  }).join('');
+  return `
+    <div style="margin-top:18px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;font-weight:600">🏨 Hotels (${hotels.length})</div>
+        <button class="btn btn-ghost btn-sm" onclick="openHotelForm('${c.id}')">+ Add hotel</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">${cards || '<div style="font-size:12px;color:var(--text-faint);font-style:italic;padding:6px 2px">No hotels booked yet.</div>'}</div>
+    </div>
+  `;
+}
+
+function openHotelForm(caseId) {
+  document.getElementById('hotel-form-modal').dataset.caseId = caseId;
+  ['hf-name','hf-address','hf-checkin','hf-checkout','hf-ref','hf-cost','hf-contact','hf-notes'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  document.getElementById('hf-for').value = 'patient';
+  document.getElementById('hf-currency').value = 'EUR';
+  document.getElementById('hotel-form-modal').style.display = 'flex';
+}
+function closeHotelForm() {
+  document.getElementById('hotel-form-modal').style.display = 'none';
+}
+async function saveHotel() {
+  const caseId = document.getElementById('hotel-form-modal').dataset.caseId;
+  const c = cases.find(x => x.id === caseId);
+  if (!c) return;
+  const val = id => document.getElementById(id).value || '';
+  const hotel = {
+    for:      document.getElementById('hf-for').value || 'patient',
+    name:     val('hf-name'),
+    address:  val('hf-address'),
+    checkin:  val('hf-checkin'),
+    checkout: val('hf-checkout'),
+    ref:      val('hf-ref'),
+    cost:     val('hf-cost'),
+    currency: document.getElementById('hf-currency').value || 'EUR',
+    contact:  val('hf-contact'),
+    notes:    val('hf-notes'),
+    createdAt: new Date().toISOString()
+  };
+  if (!hotel.name) { toast('Hotel name is required.', 'error'); return; }
+  if (!Array.isArray(c.hotels)) c.hotels = [];
+  c.hotels.push(hotel);
+  await persistCase(c);
+  closeHotelForm();
+  toast(`Hotel added for ${hotel.for}.`, 'success');
+  refreshCaseModalIfOpen();
+}
+async function deleteHotel(caseId, idx) {
+  if (!confirm('Delete this hotel booking?')) return;
+  const c = cases.find(x => x.id === caseId);
+  if (!c || !Array.isArray(c.hotels)) return;
+  c.hotels.splice(idx, 1);
+  await persistCase(c);
+  toast('Hotel removed.', 'info');
+  refreshCaseModalIfOpen();
+}
+
+// Re-render the open case modal after any change that modifies the underlying case.
+function refreshCaseModalIfOpen() {
+  const modal = document.getElementById('case-modal');
+  if (modal && modal.style.display === 'flex' && currentModalCaseId) {
+    openCaseModal(currentModalCaseId);
+  }
 }
 
 function renderSavedDocsBlock(c) {
@@ -3082,6 +3214,7 @@ async function saveRepatReport() {
   };
   await persistCase(c);
   toast('Repatriation report saved.', 'success');
+  refreshCaseModalIfOpen();
 }
 
 function printRepatReport() {
@@ -3754,6 +3887,7 @@ Use the case data faithfully. Leave [SIGNATURE], [STAMP], [DATE_OF_ISSUE] as bra
       });
       await persistCase(c);
       toast(`Document generated and saved to case${airline ? ' (' + airline.name + ')' : ''}.`, 'success');
+      refreshCaseModalIfOpen();
     } else {
       toast('Document generated (no case selected — not saved).', 'info');
     }
@@ -4951,6 +5085,7 @@ function mergeIntoExistingCase() {
   persist();
   toast(`Extracted data merged into case ${id}.`, 'success');
   document.getElementById('ext-existing-case-row').style.display = 'none';
+  refreshCaseModalIfOpen();
 }
 
 // Drag and drop
