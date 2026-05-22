@@ -2609,7 +2609,10 @@ async function saveCase(andEval=false) {
   const d = gatherFormData();
   if (!d.firstname && !d.lastname) { toast('Enter at least the patient name.', 'error'); return; }
   const id = 'HWA-' + Date.now().toString().slice(-6);
-  const c = { ...d, id, status:'new', createdAt: new Date().toISOString(), escort: null };
+  // Merge extracted fields that didn't have form inputs (flight, contacts, costs, etc.).
+  const extras = window.pendingExtractedExtras || {};
+  delete window.pendingExtractedExtras;
+  const c = { ...extras, ...d, id, status:'new', createdAt: new Date().toISOString(), escort: null };
   cases.unshift(c);
   await persistCase(c);
   toast(`Case ${id} saved to cloud.`, 'success');
@@ -2808,6 +2811,7 @@ function openCaseModal(id) {
       ${reviewRow('Transport', c.transport||'—')} ${reviewRow('Status', c.status||'new')}
     </div>
     ${c.clinicalSummary ? `<div style="background:rgba(0,0,0,0.2);padding:12px;border-radius:8px;font-size:12px;color:var(--text-dim)">${c.clinicalSummary}</div>` : ''}
+    ${renderRepatriationDetailsBlock(c)}
     ${renderSavedDocsBlock(c)}
     <div style="margin-top:16px">
       <label style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px">Status</label>
@@ -2817,6 +2821,59 @@ function openCaseModal(id) {
     </div>
   `;
   document.getElementById('case-modal').style.display = 'flex';
+}
+
+function renderRepatriationDetailsBlock(c) {
+  // Show flight/contact/cost data on the case modal when present.
+  const sections = [
+    { title:'✈ Flight & travel', fields:[
+      ['requestedRepatDate','Requested date'],
+      ['flightOutDate','Flight date'],
+      ['flightOutTime','Time'],
+      ['flightOutNumber','Flight #'],
+      ['flightOutAirline','Airline'],
+      ['flightOutCabin','Cabin'],
+      ['flightRetDate','Return date'],
+      ['flightRetNumber','Return #'],
+      ['pnr','PNR'],
+      ['ticketNumber','Ticket #'],
+    ]},
+    { title:'☎ Contacts', fields:[
+      ['treatingDoctor','Treating MD'],
+      ['treatingDoctorPhone','MD phone'],
+      ['hospitalPhone','Origin hosp phone'],
+      ['destHospPhone','Dest hosp phone'],
+      ['familyName','Next of kin'],
+      ['familyPhone','Family phone'],
+      ['insurerCaseNo','Insurer case #'],
+    ]},
+    { title:'🏥 Clinical extras', fields:[
+      ['admissionDate','Admitted'],
+      ['dischargeDate','Discharged'],
+      ['medications','Medications'],
+      ['allergies','Allergies'],
+      ['o2FlowRate','O₂ flow'],
+      ['wheelchairCode','WCH code'],
+      ['escortRequired','Escort req?'],
+      ['gender','Gender'],
+    ]},
+    { title:'💶 Costs', fields:[
+      ['hospitalCostEstimate','Hospital est.'],
+      ['insuranceCoverage','Coverage'],
+      ['currency','Currency'],
+    ]},
+  ];
+  const blocks = sections.map(s => {
+    const present = s.fields.filter(([k]) => c[k] && c[k] !== 'null');
+    if (!present.length) return '';
+    const rows = present.map(([k,label]) => reviewRow(label, c[k])).join('');
+    return `
+      <div style="margin-top:14px">
+        <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:6px">${s.title}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 18px;font-size:13px">${rows}</div>
+      </div>`;
+  }).join('');
+  return blocks;
 }
 
 function renderSavedDocsBlock(c) {
@@ -4087,9 +4144,51 @@ async function extractOneFile(fileObj, lang) {
   const langHint = lang !== 'auto' ? `The document is in ${lang}.` : 'Auto-detect the language.';
   content.push({ type:'text', text:`
 ${langHint}
-Extract ALL available information from this single document and return ONLY a valid JSON object with these exact keys (null for not found):
-{"firstname":null,"lastname":null,"dob":null,"nationality":null,"passport":null,"contact":null,"insurer":null,"policy":null,"diagnosis":null,"icd":null,"clinicalSummary":null,"bp":null,"hr":null,"spo2":null,"temp":null,"gcs":null,"rr":null,"mobility":null,"o2":null,"psych":null,"infect":null,"currentHosp":null,"originCity":null,"originCountry":null,"originIata":null,"destCity":null,"destCountry":null,"destHosp":null,"confidence":null,"notes":null}
-Rules: dob=YYYY-MM-DD if possible; mobility=walking/seat/stretcher; o2=none/low/high/ventilator; psych=none/low/high; infect=none/yes; confidence=percentage string; notes=brief extraction quality note. Return ONLY the JSON, no markdown, no explanation.`
+You are extracting data for a medical repatriation case. Extract EVERY piece of relevant information you can find in this document — medical, logistical, financial, contacts, flight details, insurance, identifiers. Return ONLY a valid JSON object with these exact keys (null when truly not present):
+
+{
+  "firstname":null,"lastname":null,"dob":null,"gender":null,"nationality":null,"passport":null,"contact":null,
+  "familyName":null,"familyPhone":null,
+  "insurer":null,"policy":null,"insurerCaseNo":null,
+
+  "diagnosis":null,"icd":null,"clinicalSummary":null,
+  "admissionDate":null,"dischargeDate":null,
+  "medications":null,"allergies":null,
+  "bp":null,"hr":null,"spo2":null,"temp":null,"gcs":null,"rr":null,
+  "mobility":null,"o2":null,"o2FlowRate":null,"wheelchairCode":null,
+  "psych":null,"infect":null,"escortRequired":null,
+
+  "currentHosp":null,"hospitalPhone":null,"treatingDoctor":null,"treatingDoctorPhone":null,
+  "originCity":null,"originCountry":null,"originIata":null,
+  "destCity":null,"destCountry":null,"destIata":null,
+  "destHosp":null,"destHospPhone":null,
+
+  "requestedRepatDate":null,
+  "flightOutDate":null,"flightOutTime":null,"flightOutNumber":null,"flightOutAirline":null,"flightOutCabin":null,
+  "flightRetDate":null,"flightRetNumber":null,
+  "pnr":null,"ticketNumber":null,
+
+  "hospitalCostEstimate":null,"insuranceCoverage":null,"currency":null,
+
+  "confidence":null,"notes":null
+}
+
+Rules:
+- All dates → YYYY-MM-DD if possible.
+- gender → "M"/"F"/"Other".
+- mobility → "walking"/"seat"/"stretcher".
+- o2 → "none"/"low"/"high"/"ventilator". o2FlowRate → number with unit, e.g. "2 L/min".
+- wheelchairCode → "WCHR"/"WCHS"/"WCHC" if applicable.
+- psych → "none"/"low"/"high". infect → "none"/"yes". escortRequired → "yes"/"no"/"unknown".
+- IATA codes → 3-letter UPPERCASE.
+- flightOutCabin → "Economy"/"Premium Economy"/"Business"/"First"/"Stretcher".
+- Costs as numbers (no currency symbol); currency as "EUR"/"USD"/"GBP" etc.
+- medications, allergies → comma-separated list or short narrative.
+- familyName, familyPhone → next-of-kin or emergency contact details.
+- insurerCaseNo → the insurer's internal case/file/reference number if present anywhere on the document.
+- confidence → percentage string e.g. "82%".
+- notes → brief note about document quality, language, and any fields you inferred vs. read directly.
+- Return ONLY the JSON, no markdown, no explanation.`
   });
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -4115,7 +4214,10 @@ Rules: dob=YYYY-MM-DD if possible; mobility=walking/seat/stretcher; o2=none/low/
 function mergeExtractions(perFile) {
   // perFile: [{ name, data }]. For each field, keep the first non-null value
   // (earlier files take precedence). Average confidence, concatenate notes.
-  const fields = ['firstname','lastname','dob','nationality','passport','contact','insurer','policy','diagnosis','icd','clinicalSummary','bp','hr','spo2','temp','gcs','rr','mobility','o2','psych','infect','currentHosp','originCity','originCountry','originIata','destCity','destCountry','destHosp'];
+  // Field list is derived from EXTRACT_FIELDS so it always tracks the schema.
+  const fields = (typeof EXTRACT_FIELDS !== 'undefined' && EXTRACT_FIELDS.length)
+    ? EXTRACT_FIELDS.map(f => f.key)
+    : ['firstname','lastname','dob','nationality','passport','contact','insurer','policy','diagnosis','icd','clinicalSummary','bp','hr','spo2','temp','gcs','rr','mobility','o2','psych','infect','currentHosp','originCity','originCountry','originIata','destCity','destCountry','destHosp'];
   const merged = {};
   fields.forEach(k => {
     merged[k] = null;
@@ -4473,15 +4575,23 @@ const EXTRACT_FIELDS = [
   { key:'firstname',       label:'First Name',          group:'patient' },
   { key:'lastname',        label:'Last Name',           group:'patient' },
   { key:'dob',             label:'Date of Birth',       group:'patient' },
+  { key:'gender',          label:'Gender',              group:'patient' },
   { key:'nationality',     label:'Nationality',         group:'patient' },
   { key:'passport',        label:'Passport / ID',       group:'patient' },
   { key:'contact',         label:'Emergency Contact',   group:'patient' },
+  { key:'familyName',      label:'Family / Next of Kin',group:'patient' },
+  { key:'familyPhone',     label:'Family Phone',        group:'patient' },
   { key:'insurer',         label:'Insurer',             group:'patient' },
   { key:'policy',          label:'Policy Number',       group:'patient' },
+  { key:'insurerCaseNo',   label:'Insurer Case / File #', group:'patient' },
   // Medical
   { key:'diagnosis',       label:'Primary Diagnosis',   group:'medical' },
   { key:'icd',             label:'ICD-10 Code',         group:'medical' },
   { key:'clinicalSummary', label:'Clinical Summary',    group:'medical' },
+  { key:'admissionDate',   label:'Admission Date',      group:'medical' },
+  { key:'dischargeDate',   label:'Discharge Date',      group:'medical' },
+  { key:'medications',     label:'Current Medications', group:'medical' },
+  { key:'allergies',       label:'Allergies',           group:'medical' },
   { key:'bp',              label:'Blood Pressure',      group:'vitals'  },
   { key:'hr',              label:'Heart Rate',          group:'vitals'  },
   { key:'spo2',            label:'SpO₂',               group:'vitals'  },
@@ -4490,16 +4600,39 @@ const EXTRACT_FIELDS = [
   { key:'rr',              label:'Respiratory Rate',    group:'vitals'  },
   { key:'mobility',        label:'Mobility',            group:'flags'   },
   { key:'o2',              label:'O₂ Requirement',      group:'flags'   },
+  { key:'o2FlowRate',      label:'O₂ Flow (L/min)',     group:'flags'   },
+  { key:'wheelchairCode',  label:'WCHR/S/C Code',       group:'flags'   },
   { key:'psych',           label:'Psychiatric Risk',    group:'flags'   },
   { key:'infect',          label:'Isolation Required',  group:'flags'   },
+  { key:'escortRequired',  label:'Escort Required?',    group:'flags'   },
   // Logistics
   { key:'currentHosp',     label:'Current Hospital',    group:'logistics'},
+  { key:'hospitalPhone',   label:'Hospital Phone',      group:'logistics'},
+  { key:'treatingDoctor',  label:'Treating Physician',  group:'logistics'},
+  { key:'treatingDoctorPhone', label:'Physician Phone', group:'logistics'},
   { key:'originCity',      label:'Origin City',         group:'logistics'},
   { key:'originCountry',   label:'Origin Country',      group:'logistics'},
   { key:'originIata',      label:'Origin Airport',      group:'logistics'},
   { key:'destCity',        label:'Destination City',    group:'logistics'},
   { key:'destCountry',     label:'Destination Country', group:'logistics'},
+  { key:'destIata',        label:'Destination Airport', group:'logistics'},
   { key:'destHosp',        label:'Receiving Hospital',  group:'logistics'},
+  { key:'destHospPhone',   label:'Receiving Hosp Phone',group:'logistics'},
+  // Flight & travel
+  { key:'requestedRepatDate', label:'Requested Repat Date', group:'flight' },
+  { key:'flightOutDate',   label:'Flight Date (out)',   group:'flight' },
+  { key:'flightOutTime',   label:'Flight Time (out)',   group:'flight' },
+  { key:'flightOutNumber', label:'Flight Number (out)', group:'flight' },
+  { key:'flightOutAirline',label:'Airline (out)',       group:'flight' },
+  { key:'flightOutCabin',  label:'Cabin Class',         group:'flight' },
+  { key:'flightRetDate',   label:'Return Flight Date',  group:'flight' },
+  { key:'flightRetNumber', label:'Return Flight #',     group:'flight' },
+  { key:'pnr',             label:'PNR / Booking Ref',   group:'flight' },
+  { key:'ticketNumber',    label:'Ticket Number',       group:'flight' },
+  // Costs
+  { key:'hospitalCostEstimate', label:'Hospital Cost (est.)', group:'costs' },
+  { key:'insuranceCoverage',    label:'Insurance Coverage',   group:'costs' },
+  { key:'currency',             label:'Currency',             group:'costs' },
 ];
 
 function getFileIcon(type) {
@@ -4683,7 +4816,7 @@ function renderExtractionFields(parsed) {
   confBadge.className = 'badge ' + (parseInt(conf) >= 80 ? 'badge-active' : parseInt(conf) >= 60 ? 'badge-pending' : 'badge-critical');
 
   // Group by category
-  const groups = { patient:'👤 Patient', medical:'🔬 Diagnosis', vitals:'💓 Vitals', flags:'⚠️ Flags', logistics:'✈ Logistics' };
+  const groups = { patient:'👤 Patient', medical:'🔬 Diagnosis', vitals:'💓 Vitals', flags:'⚠️ Flags', logistics:'🏥 Logistics', flight:'✈ Flight & Travel', costs:'💶 Costs' };
   let html = '';
   Object.entries(groups).forEach(([gKey, gLabel]) => {
     const fields = EXTRACT_FIELDS.filter(f => f.group === gKey);
@@ -4756,7 +4889,22 @@ function applyToNewCase() {
     set('f-origin-iata', d.originIata ? d.originIata.toUpperCase() : '');
     set('f-dest-city', d.destCity);
     set('f-dest-country', d.destCountry);
+    set('f-dest-iata', d.destIata ? d.destIata.toUpperCase() : '');
     set('f-dest-hosp', d.destHosp);
+    // Stash fields without form inputs (flight, contacts, costs, etc.) so saveCase
+    // can merge them into the case record. The keys here mirror EXTRACT_FIELDS but
+    // exclude anything that already has a corresponding form input above.
+    const formFieldKeys = new Set([
+      'firstname','lastname','dob','nationality','passport','contact','insurer','policy',
+      'diagnosis','icd','clinicalSummary','bp','hr','spo2','temp','gcs','rr',
+      'currentHosp','originCity','originCountry','originIata','destCity','destCountry','destIata','destHosp',
+      'mobility','o2','psych','infect'
+    ]);
+    const extras = {};
+    Object.keys(d).forEach(k => {
+      if (!formFieldKeys.has(k) && d[k] && d[k] !== 'null') extras[k] = d[k];
+    });
+    window.pendingExtractedExtras = extras;
     // Toggles
     if (d.mobility && ['walking','seat','stretcher'].includes(d.mobility)) {
       document.querySelectorAll('#mobility-group .toggle-chip').forEach(c => c.classList.remove('on'));
