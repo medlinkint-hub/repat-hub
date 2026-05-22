@@ -605,6 +605,57 @@ textarea{resize:vertical;min-height:88px}
 }
 .modal-close:hover{background:var(--border-med);color:var(--hwa-navy)}
 
+/* ── REPATRIATION REPORT ── */
+.rr-modal{max-width:980px}
+.rr-section{margin-bottom:22px;padding-bottom:18px;border-bottom:1px solid var(--border)}
+.rr-section:last-child{border-bottom:none}
+.rr-section-title{font-size:13px;font-weight:700;color:var(--hwa-navy);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:14px;padding-bottom:6px;border-bottom:2px solid var(--hwa-red)}
+.rr-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.rr-grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+.rr-grid-6{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}
+.rr-field{display:flex;flex-direction:column;gap:5px}
+.rr-field.rr-col-3{grid-column:span 3}
+.rr-field label{font-size:11px;color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:0.3px}
+.rr-field input, .rr-field select, .rr-field textarea{
+  background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);
+  padding:8px 10px;font-size:13px;color:var(--text);font-family:inherit;
+}
+.rr-field input:disabled{opacity:0.7;background:var(--surface-3)}
+.rr-field textarea{resize:vertical;min-height:54px}
+.rr-cost-table{width:100%;border-collapse:collapse;font-size:13px}
+.rr-cost-table th{text-align:left;padding:8px 6px;font-size:11px;text-transform:uppercase;letter-spacing:0.4px;color:var(--text-dim);border-bottom:1px solid var(--border)}
+.rr-cost-table td{padding:6px;border-bottom:1px solid var(--border)}
+.rr-cost-table input{width:100%;background:var(--surface-2);border:1px solid var(--border);border-radius:4px;padding:5px 7px;font-size:12px;color:var(--text)}
+.rr-cost-table .rr-total-row td{border-top:2px solid var(--hwa-red);border-bottom:none;padding-top:10px}
+@media (max-width:700px){
+  .rr-grid-2, .rr-grid-3, .rr-grid-6{grid-template-columns:1fr}
+  .rr-field.rr-col-3{grid-column:span 1}
+}
+@media print {
+  body * { visibility: hidden; }
+  #repat-report-modal, #repat-report-modal * { visibility: visible; }
+  #repat-report-modal {
+    position: static !important; background: #fff !important; padding: 0 !important;
+    backdrop-filter: none !important;
+  }
+  #rr-modal-box {
+    max-width: 100% !important; max-height: none !important; box-shadow: none !important;
+    border: none !important; background: #fff !important; color: #000 !important; padding: 0 24px !important;
+    animation: none !important; overflow: visible !important;
+  }
+  #rr-modal-box, #rr-modal-box * { color: #000 !important; }
+  .rr-no-print { display: none !important; }
+  .rr-print-header { display: block !important; }
+  .rr-section-title { color: #0c1f3f !important; border-bottom-color: #c0392b !important; }
+  .rr-field input, .rr-field select, .rr-field textarea, .rr-cost-table input {
+    background: transparent !important; border: none !important; border-bottom: 1px solid #ccc !important;
+    border-radius: 0 !important; padding: 4px 0 !important;
+  }
+  .rr-field input:disabled { opacity: 1 !important; }
+  .rr-section { page-break-inside: avoid; }
+  @page { margin: 14mm 12mm; size: A4; }
+}
+
 /* ── DOCUMENT EXTRACTION ── */
 .upload-zone{
   border:2px dashed var(--border-med);border-radius:var(--radius);
@@ -1872,7 +1923,213 @@ The AI will provide:
       <button class="btn btn-primary btn-sm" onclick="evalFromModal()">⬡ AI Evaluate</button>
       <button class="btn btn-ghost btn-sm" onclick="flightFromModal()">✈ Search Flights</button>
       <button class="btn btn-ghost btn-sm" onclick="docsFromModal()">⬚ Generate Docs</button>
+      <button class="btn btn-ghost btn-sm" onclick="openRepatReportFromModal()">📋 Repat Report</button>
       <button class="btn btn-danger btn-sm" onclick="deleteCase()">🗑 Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Repatriation Report Modal ─── -->
+<div class="modal-backdrop" id="repat-report-modal" style="display:none" onclick="if(event.target===this)closeRepatReport()">
+  <div class="modal-box rr-modal" id="rr-modal-box">
+    <div class="modal-header rr-no-print">
+      <h2>📋 Repatriation Report — <span id="rr-case-label"></span></h2>
+      <button class="modal-close" onclick="closeRepatReport()">✕</button>
+    </div>
+
+    <div id="rr-printable">
+      <div class="rr-print-header" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:12px;border-bottom:2px solid #0c1f3f;margin-bottom:18px">
+          <div>
+            <div style="font-size:20px;font-weight:700;color:#0c1f3f">HealthWatch Assistance S.A.</div>
+            <div style="font-size:11px;color:#6b7c93;margin-top:2px">Repatriation Report</div>
+          </div>
+          <div style="text-align:right;font-size:11px;color:#6b7c93">
+            <div>Case <strong id="rr-print-caseid"></strong></div>
+            <div>Generated <span id="rr-print-date"></span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 1. Case Identification -->
+      <div class="rr-section">
+        <div class="rr-section-title">1 · Case Identification</div>
+        <div class="rr-grid-3">
+          <div class="rr-field"><label>Case ID</label><input id="rr-caseid" disabled></div>
+          <div class="rr-field"><label>Patient Name</label><input id="rr-patient" disabled></div>
+          <div class="rr-field"><label>DOB</label><input id="rr-dob" disabled></div>
+          <div class="rr-field"><label>Nationality</label><input id="rr-nat" disabled></div>
+          <div class="rr-field"><label>Passport</label><input id="rr-passport" disabled></div>
+          <div class="rr-field"><label>Insurer / Policy</label><input id="rr-insurer" disabled></div>
+        </div>
+      </div>
+
+      <!-- 2. Repatriation Summary -->
+      <div class="rr-section">
+        <div class="rr-section-title">2 · Repatriation Summary</div>
+        <div class="rr-grid-3">
+          <div class="rr-field"><label>Date of repatriation</label><input id="rr-date" type="date"></div>
+          <div class="rr-field"><label>Type</label>
+            <select id="rr-type">
+              <option value="">— select —</option>
+              <option value="Air ambulance">Air ambulance</option>
+              <option value="Commercial — stretcher">Commercial — stretcher</option>
+              <option value="Commercial — seat with escort">Commercial — seat with escort</option>
+              <option value="Commercial — seat, no escort">Commercial — seat, no escort</option>
+              <option value="Ground transport only">Ground transport only</option>
+            </select>
+          </div>
+          <div class="rr-field"><label>Total elapsed time</label><input id="rr-elapsed" placeholder="e.g. 11h 30min"></div>
+          <div class="rr-field"><label>Origin (city, country)</label><input id="rr-origin"></div>
+          <div class="rr-field"><label>Destination (city, country)</label><input id="rr-dest"></div>
+          <div class="rr-field"><label>Airline(s) used</label><input id="rr-airline" placeholder="e.g. Aegean A3 / Lufthansa LH"></div>
+          <div class="rr-field rr-col-3"><label>Flight number(s) — outbound / connecting</label><input id="rr-flights" placeholder="e.g. A3 821 ATH-MUC · LH 1340 MUC-FRA"></div>
+        </div>
+      </div>
+
+      <!-- 3. Medical Team / Equipment -->
+      <div class="rr-section">
+        <div class="rr-section-title">3 · Medical Escort & Equipment</div>
+        <div class="rr-field"><label>Escort(s) — name and role</label>
+          <textarea id="rr-escort" rows="2" placeholder="Dr. John Doe — Flight Physician
+Jane Smith RN — Flight Nurse"></textarea>
+        </div>
+        <div class="rr-grid-2">
+          <div class="rr-field"><label>Equipment carried</label>
+            <textarea id="rr-equipment" rows="3" placeholder="Stretcher kit, O₂ cylinders × 2, monitor/defib, suction, IV kit, emergency drugs…"></textarea>
+          </div>
+          <div class="rr-field"><label>Medications administered en route</label>
+            <textarea id="rr-meds" rows="3" placeholder="Time · drug · dose · route · indication"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. Clinical course -->
+      <div class="rr-section">
+        <div class="rr-section-title">4 · Clinical Course During Transport</div>
+        <div style="margin-bottom:10px;font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;font-weight:600">Vitals at start of transport</div>
+        <div class="rr-grid-6">
+          <div class="rr-field"><label>BP</label><input id="rr-vs-bp"></div>
+          <div class="rr-field"><label>HR</label><input id="rr-vs-hr"></div>
+          <div class="rr-field"><label>SpO₂</label><input id="rr-vs-spo2"></div>
+          <div class="rr-field"><label>Temp</label><input id="rr-vs-temp"></div>
+          <div class="rr-field"><label>GCS</label><input id="rr-vs-gcs"></div>
+          <div class="rr-field"><label>RR</label><input id="rr-vs-rr"></div>
+        </div>
+        <div style="margin:14px 0 10px;font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;font-weight:600">Vitals at handover (destination)</div>
+        <div class="rr-grid-6">
+          <div class="rr-field"><label>BP</label><input id="rr-ve-bp"></div>
+          <div class="rr-field"><label>HR</label><input id="rr-ve-hr"></div>
+          <div class="rr-field"><label>SpO₂</label><input id="rr-ve-spo2"></div>
+          <div class="rr-field"><label>Temp</label><input id="rr-ve-temp"></div>
+          <div class="rr-field"><label>GCS</label><input id="rr-ve-gcs"></div>
+          <div class="rr-field"><label>RR</label><input id="rr-ve-rr"></div>
+        </div>
+        <div class="rr-grid-2" style="margin-top:12px">
+          <div class="rr-field"><label>In-flight observations / interventions</label>
+            <textarea id="rr-inflight" rows="3" placeholder="Patient tolerated transport well. Mild desaturation at FL350 corrected with 4 L/min O₂. No other events."></textarea>
+          </div>
+          <div class="rr-field"><label>Oxygen consumption</label>
+            <textarea id="rr-o2use" rows="3" placeholder="Started: 2× 2L cylinders full
+Ended: 1× cylinder ~30% remaining
+Avg flow: 3 L/min"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- 5. Logistics executed -->
+      <div class="rr-section">
+        <div class="rr-section-title">5 · Logistics Executed</div>
+        <div class="rr-grid-2">
+          <div class="rr-field"><label>Ground — pickup → origin airport</label>
+            <textarea id="rr-gnd-out" rows="2" placeholder="Ambulance HCS-12, departed hospital 06:45, arrived ATH 07:40."></textarea>
+          </div>
+          <div class="rr-field"><label>Ground — dest airport → receiving facility</label>
+            <textarea id="rr-gnd-in" rows="2" placeholder="Ambulance MUC-Falck, departed 14:20, arrived hospital 15:10."></textarea>
+          </div>
+        </div>
+        <div class="rr-field"><label>Flight execution — actual departures, arrivals, delays</label>
+          <textarea id="rr-flight-actual" rows="3" placeholder="A3 821 STD 09:15 → ATD 09:32 / STA 11:10 → ATA 11:22. No delays."></textarea>
+        </div>
+        <div class="rr-grid-2">
+          <div class="rr-field"><label>Receiving facility</label><input id="rr-recv-fac" placeholder="Klinikum rechts der Isar, München"></div>
+          <div class="rr-field"><label>Accepting physician / contact</label><input id="rr-recv-doc" placeholder="Dr. Müller, +49 89 …"></div>
+        </div>
+      </div>
+
+      <!-- 6. Outcome -->
+      <div class="rr-section">
+        <div class="rr-section-title">6 · Outcome</div>
+        <div class="rr-grid-3">
+          <div class="rr-field"><label>Patient condition on arrival</label>
+            <select id="rr-outcome">
+              <option value="">— select —</option>
+              <option value="Improved">Improved</option>
+              <option value="Stable / unchanged">Stable / unchanged</option>
+              <option value="Deteriorated">Deteriorated</option>
+              <option value="Deceased during transport">Deceased during transport</option>
+            </select>
+          </div>
+          <div class="rr-field"><label>Handover successful?</label>
+            <select id="rr-handover">
+              <option value="">—</option><option value="Yes">Yes</option><option value="Partial">Partial / with notes</option><option value="No">No</option>
+            </select>
+          </div>
+          <div class="rr-field"><label>Deviations from plan?</label>
+            <select id="rr-deviation">
+              <option value="">—</option><option value="None">None</option><option value="Minor">Minor</option><option value="Major">Major</option>
+            </select>
+          </div>
+        </div>
+        <div class="rr-field"><label>Description of deviations / handover notes</label>
+          <textarea id="rr-dev-notes" rows="3"></textarea>
+        </div>
+      </div>
+
+      <!-- 7. Issues / lessons -->
+      <div class="rr-section">
+        <div class="rr-section-title">7 · Issues & Lessons Learned</div>
+        <div class="rr-grid-2">
+          <div class="rr-field"><label>Issues encountered</label>
+            <textarea id="rr-issues" rows="3" placeholder="Delays, equipment problems, coordination, customs/immigration, etc."></textarea>
+          </div>
+          <div class="rr-field"><label>Recommendations for future cases</label>
+            <textarea id="rr-recs" rows="3"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- 8. Cost reconciliation -->
+      <div class="rr-section">
+        <div class="rr-section-title">8 · Cost Reconciliation (EUR)</div>
+        <table class="rr-cost-table">
+          <thead><tr><th>Item</th><th style="text-align:right">Estimated</th><th style="text-align:right">Actual</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td>Air transport (tickets / ambulance)</td><td><input id="rr-c-air-e" type="number" step="0.01"></td><td><input id="rr-c-air-a" type="number" step="0.01"></td><td><input id="rr-c-air-n"></td></tr>
+            <tr><td>Ground transport (both ends)</td><td><input id="rr-c-gnd-e" type="number" step="0.01"></td><td><input id="rr-c-gnd-a" type="number" step="0.01"></td><td><input id="rr-c-gnd-n"></td></tr>
+            <tr><td>Medical escort fees</td><td><input id="rr-c-esc-e" type="number" step="0.01"></td><td><input id="rr-c-esc-a" type="number" step="0.01"></td><td><input id="rr-c-esc-n"></td></tr>
+            <tr><td>Equipment / O₂ / medications</td><td><input id="rr-c-eq-e" type="number" step="0.01"></td><td><input id="rr-c-eq-a" type="number" step="0.01"></td><td><input id="rr-c-eq-n"></td></tr>
+            <tr><td>Other (accommodation, fees, …)</td><td><input id="rr-c-oth-e" type="number" step="0.01"></td><td><input id="rr-c-oth-a" type="number" step="0.01"></td><td><input id="rr-c-oth-n"></td></tr>
+            <tr class="rr-total-row"><td><strong>Total</strong></td><td style="text-align:right"><strong id="rr-c-tot-e">—</strong></td><td style="text-align:right"><strong id="rr-c-tot-a">—</strong></td><td><strong id="rr-c-tot-var" style="font-size:12px"></strong></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 9. Sign-off -->
+      <div class="rr-section">
+        <div class="rr-section-title">9 · Sign-off</div>
+        <div class="rr-grid-3">
+          <div class="rr-field"><label>Completed by</label><input id="rr-signed-by" placeholder="Name / role"></div>
+          <div class="rr-field"><label>Date</label><input id="rr-signed-date" type="date"></div>
+          <div class="rr-field"><label>Approved (medical director)</label><input id="rr-signed-md" placeholder="Name"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="rr-no-print" style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap;border-top:1px solid var(--border);padding-top:16px">
+      <button class="btn btn-primary btn-sm" onclick="saveRepatReport()">💾 Save Report</button>
+      <button class="btn btn-ghost btn-sm" onclick="printRepatReport()">🖨 Print / Save as PDF</button>
+      <button class="btn btn-ghost btn-sm" onclick="closeRepatReport()" style="margin-left:auto">Close</button>
     </div>
   </div>
 </div>
@@ -2531,6 +2788,154 @@ function flightFromModal() {
   if (c) { document.getElementById('fs-origin').value = c.originIata||''; document.getElementById('fs-dest').value = c.destIata||''; if (c.departDate) document.getElementById('fs-date').value = c.departDate; }
 }
 function docsFromModal() { closeCaseModal(); navTo('documents'); setTimeout(() => { document.getElementById('doc-case-select').value = currentModalCaseId; }, 200); }
+
+// ─── Repatriation Report ───
+let currentReportCaseId = null;
+function openRepatReportFromModal() {
+  if (!currentModalCaseId) return;
+  closeCaseModal();
+  openRepatReport(currentModalCaseId);
+}
+function openRepatReport(caseId) {
+  const c = cases.find(x => x.id === caseId);
+  if (!c) return;
+  currentReportCaseId = caseId;
+  const r = c.repatReport || {};
+  document.getElementById('rr-case-label').textContent = `${c.id} · ${c.firstname||''} ${c.lastname||''}`.trim();
+
+  // 1. Identification (auto-populated, disabled)
+  document.getElementById('rr-caseid').value   = c.id || '';
+  document.getElementById('rr-patient').value  = `${c.firstname||''} ${c.lastname||''}`.trim();
+  document.getElementById('rr-dob').value      = c.dob || '';
+  document.getElementById('rr-nat').value      = c.nationality || '';
+  document.getElementById('rr-passport').value = c.passport || '';
+  document.getElementById('rr-insurer').value  = [c.insurer, c.policy].filter(Boolean).join(' · ');
+
+  // 2. Summary — defaults from case, overridable
+  document.getElementById('rr-date').value     = r.date || c.departDate || '';
+  document.getElementById('rr-type').value     = r.type || (c.transport === 'ambulance' ? 'Air ambulance' : '');
+  document.getElementById('rr-elapsed').value  = r.elapsed || '';
+  document.getElementById('rr-origin').value   = r.origin  || [c.originCity, c.originCountry].filter(Boolean).join(', ');
+  document.getElementById('rr-dest').value     = r.dest    || [c.destCity, c.destCountry].filter(Boolean).join(', ');
+  document.getElementById('rr-airline').value  = r.airline || '';
+  document.getElementById('rr-flights').value  = r.flights || '';
+
+  // 3. Escort / equipment
+  document.getElementById('rr-escort').value    = r.escort    || (c.escort ? (typeof c.escort === 'string' ? c.escort : (c.escort.name || '')) : '');
+  document.getElementById('rr-equipment').value = r.equipment || '';
+  document.getElementById('rr-meds').value      = r.meds      || '';
+
+  // 4. Clinical course — start vitals default from intake
+  document.getElementById('rr-vs-bp').value    = r.vsBp   || c.bp   || '';
+  document.getElementById('rr-vs-hr').value    = r.vsHr   || c.hr   || '';
+  document.getElementById('rr-vs-spo2').value  = r.vsSpo2 || c.spo2 || '';
+  document.getElementById('rr-vs-temp').value  = r.vsTemp || c.temp || '';
+  document.getElementById('rr-vs-gcs').value   = r.vsGcs  || c.gcs  || '';
+  document.getElementById('rr-vs-rr').value    = r.vsRr   || c.rr   || '';
+  document.getElementById('rr-ve-bp').value    = r.veBp   || '';
+  document.getElementById('rr-ve-hr').value    = r.veHr   || '';
+  document.getElementById('rr-ve-spo2').value  = r.veSpo2 || '';
+  document.getElementById('rr-ve-temp').value  = r.veTemp || '';
+  document.getElementById('rr-ve-gcs').value   = r.veGcs  || '';
+  document.getElementById('rr-ve-rr').value    = r.veRr   || '';
+  document.getElementById('rr-inflight').value = r.inflight || '';
+  document.getElementById('rr-o2use').value    = r.o2use    || '';
+
+  // 5. Logistics
+  document.getElementById('rr-gnd-out').value     = r.gndOut    || '';
+  document.getElementById('rr-gnd-in').value      = r.gndIn     || '';
+  document.getElementById('rr-flight-actual').value = r.flightActual || '';
+  document.getElementById('rr-recv-fac').value    = r.recvFac   || c.destHosp || '';
+  document.getElementById('rr-recv-doc').value    = r.recvDoc   || '';
+
+  // 6. Outcome
+  document.getElementById('rr-outcome').value   = r.outcome   || '';
+  document.getElementById('rr-handover').value  = r.handover  || '';
+  document.getElementById('rr-deviation').value = r.deviation || '';
+  document.getElementById('rr-dev-notes').value = r.devNotes  || '';
+
+  // 7. Issues
+  document.getElementById('rr-issues').value = r.issues || '';
+  document.getElementById('rr-recs').value   = r.recs   || '';
+
+  // 8. Costs
+  const cost = r.cost || {};
+  ['air','gnd','esc','eq','oth'].forEach(k => {
+    document.getElementById(`rr-c-${k}-e`).value = cost[`${k}E`] ?? '';
+    document.getElementById(`rr-c-${k}-a`).value = cost[`${k}A`] ?? '';
+    document.getElementById(`rr-c-${k}-n`).value = cost[`${k}N`] ?? '';
+  });
+  recalcRepatCosts();
+
+  // 9. Sign-off
+  document.getElementById('rr-signed-by').value   = r.signedBy   || '';
+  document.getElementById('rr-signed-date').value = r.signedDate || '';
+  document.getElementById('rr-signed-md').value   = r.signedMd   || '';
+
+  // Wire cost inputs to live-recalc
+  document.querySelectorAll('.rr-cost-table input[type="number"]').forEach(i => i.oninput = recalcRepatCosts);
+
+  document.getElementById('repat-report-modal').style.display = 'flex';
+}
+
+function closeRepatReport() {
+  document.getElementById('repat-report-modal').style.display = 'none';
+  currentReportCaseId = null;
+}
+
+function recalcRepatCosts() {
+  const sumCol = suffix => ['air','gnd','esc','eq','oth']
+    .map(k => parseFloat(document.getElementById(`rr-c-${k}-${suffix}`).value))
+    .filter(n => !isNaN(n))
+    .reduce((a,b)=>a+b, 0);
+  const e = sumCol('e'), a = sumCol('a');
+  document.getElementById('rr-c-tot-e').textContent = e ? '€' + e.toFixed(2) : '—';
+  document.getElementById('rr-c-tot-a').textContent = a ? '€' + a.toFixed(2) : '—';
+  const variance = (a && e) ? a - e : null;
+  const varEl = document.getElementById('rr-c-tot-var');
+  if (variance == null) { varEl.textContent = ''; return; }
+  const sign = variance > 0 ? '+' : '';
+  const colour = variance > 0 ? 'var(--red)' : 'var(--green)';
+  varEl.style.color = colour;
+  varEl.textContent = `Δ ${sign}€${variance.toFixed(2)}`;
+}
+
+async function saveRepatReport() {
+  if (!currentReportCaseId) return;
+  const c = cases.find(x => x.id === currentReportCaseId);
+  if (!c) return;
+  const val = id => document.getElementById(id).value || '';
+  const num = id => { const v = parseFloat(document.getElementById(id).value); return isNaN(v) ? null : v; };
+  c.repatReport = {
+    date: val('rr-date'), type: val('rr-type'), elapsed: val('rr-elapsed'),
+    origin: val('rr-origin'), dest: val('rr-dest'), airline: val('rr-airline'), flights: val('rr-flights'),
+    escort: val('rr-escort'), equipment: val('rr-equipment'), meds: val('rr-meds'),
+    vsBp: val('rr-vs-bp'), vsHr: val('rr-vs-hr'), vsSpo2: val('rr-vs-spo2'), vsTemp: val('rr-vs-temp'), vsGcs: val('rr-vs-gcs'), vsRr: val('rr-vs-rr'),
+    veBp: val('rr-ve-bp'), veHr: val('rr-ve-hr'), veSpo2: val('rr-ve-spo2'), veTemp: val('rr-ve-temp'), veGcs: val('rr-ve-gcs'), veRr: val('rr-ve-rr'),
+    inflight: val('rr-inflight'), o2use: val('rr-o2use'),
+    gndOut: val('rr-gnd-out'), gndIn: val('rr-gnd-in'), flightActual: val('rr-flight-actual'),
+    recvFac: val('rr-recv-fac'), recvDoc: val('rr-recv-doc'),
+    outcome: val('rr-outcome'), handover: val('rr-handover'), deviation: val('rr-deviation'), devNotes: val('rr-dev-notes'),
+    issues: val('rr-issues'), recs: val('rr-recs'),
+    cost: {
+      airE: num('rr-c-air-e'), airA: num('rr-c-air-a'), airN: val('rr-c-air-n'),
+      gndE: num('rr-c-gnd-e'), gndA: num('rr-c-gnd-a'), gndN: val('rr-c-gnd-n'),
+      escE: num('rr-c-esc-e'), escA: num('rr-c-esc-a'), escN: val('rr-c-esc-n'),
+      eqE:  num('rr-c-eq-e'),  eqA:  num('rr-c-eq-a'),  eqN:  val('rr-c-eq-n'),
+      othE: num('rr-c-oth-e'), othA: num('rr-c-oth-a'), othN: val('rr-c-oth-n')
+    },
+    signedBy: val('rr-signed-by'), signedDate: val('rr-signed-date'), signedMd: val('rr-signed-md'),
+    updatedAt: new Date().toISOString()
+  };
+  await persistCase(c);
+  toast('Repatriation report saved.', 'success');
+}
+
+function printRepatReport() {
+  document.getElementById('rr-print-caseid').textContent = document.getElementById('rr-caseid').value || '';
+  document.getElementById('rr-print-date').textContent = new Date().toLocaleDateString();
+  window.print();
+}
 
 // ══════════════════════════════════════════════════════════════════
 // AI EVALUATION
