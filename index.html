@@ -2848,6 +2848,7 @@ function openCaseModal(id) {
     ${c.clinicalSummary ? `<div style="background:rgba(0,0,0,0.2);padding:12px;border-radius:8px;font-size:12px;color:var(--text-dim)">${c.clinicalSummary}</div>` : ''}
     ${renderRepatriationDetailsBlock(c)}
     ${renderHotelsBlock(c)}
+    ${renderAttachmentsBlock(c)}
     ${renderSavedDocsBlock(c)}
     <div style="margin-top:16px">
       <label style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px">Status</label>
@@ -2857,6 +2858,10 @@ function openCaseModal(id) {
     </div>
   `;
   document.getElementById('case-modal').style.display = 'flex';
+  // Lazy-load attachments from Firestore the first time this case is opened.
+  if (c.attachments === undefined && typeof db !== 'undefined' && db) {
+    loadAttachments(id).then(() => refreshCaseModalIfOpen());
+  }
 }
 
 function renderRepatriationDetailsBlock(c) {
@@ -2997,6 +3002,179 @@ async function deleteHotel(caseId, idx) {
   c.hotels.splice(idx, 1);
   await persistCase(c);
   toast('Hotel removed.', 'info');
+  refreshCaseModalIfOpen();
+}
+
+// ─── Attachments ───
+// Stored as one Firestore doc per file in collection `case_attachments`, base64
+// encoded. Per-doc Firestore limit is 1MB, so we cap upload size at 800KB
+// (~1.06MB base64) and ask larger files to be compressed.
+const ATTACHMENT_MAX_BYTES = 800 * 1024;
+
+function attachmentIcon(type) {
+  if (!type) return '📎';
+  if (type.includes('pdf')) return '📄';
+  if (type.startsWith('image/')) return '🖼';
+  if (type.includes('word') || type.includes('officedocument.wordprocessing')) return '📝';
+  if (type.includes('sheet') || type.includes('excel') || type.includes('spreadsheet')) return '📊';
+  if (type.startsWith('text/')) return '📃';
+  return '📎';
+}
+
+function renderAttachmentsBlock(c) {
+  const atts = Array.isArray(c.attachments) ? c.attachments : [];
+  const cards = atts.map(a => `
+    <div style="display:flex;align-items:center;gap:10px;padding:9px 11px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px">
+      <div style="font-size:20px;flex-shrink:0">${attachmentIcon(a.type)}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+          ${escHtml(a.name)}
+          ${a.category && a.category !== 'Other' ? `<span style="background:rgba(192,57,43,0.12);color:var(--hwa-red);padding:1px 7px;border-radius:8px;font-size:10px;font-weight:700;margin-left:6px">${escHtml(a.category)}</span>` : ''}
+        </div>
+        <div style="font-size:11px;color:var(--text-dim)">${new Date(a.uploadedAt).toLocaleString()} · ${formatSize(a.size)}</div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="viewAttachment('${a.id}')" title="View">👁</button>
+      <button class="btn btn-ghost btn-sm" onclick="downloadAttachment('${a.id}')" title="Download">⬇</button>
+      <button class="btn btn-danger btn-sm" onclick="deleteAttachment('${a.id}')" title="Delete">✕</button>
+    </div>
+  `).join('');
+  const loading = c.attachments === undefined ? '<div style="font-size:11px;color:var(--text-faint);font-style:italic;padding:4px 2px">Loading attachments…</div>' : '';
+  return `
+    <div style="margin-top:18px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+        <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;font-weight:600">📎 Attachments (${atts.length})</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <select id="att-cat-${c.id}" style="font-size:11px;padding:5px 8px;background:var(--surface-2);border:1px solid var(--border);border-radius:4px;color:var(--text)">
+            <option>Passport / ID</option>
+            <option>Referral letter</option>
+            <option>Medical report</option>
+            <option>Insurance form</option>
+            <option>Flight confirmation</option>
+            <option>Hotel confirmation</option>
+            <option>Visa / Authorisation</option>
+            <option>Signed MEDIF</option>
+            <option>Cost invoice</option>
+            <option>Other</option>
+          </select>
+          <input type="file" id="att-input-${c.id}" style="display:none"
+                 accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.tif,.tiff,.xls,.xlsx,.txt"
+                 onchange="handleAttachmentUpload('${c.id}')">
+          <button class="btn btn-ghost btn-sm" onclick="document.getElementById('att-input-${c.id}').click()">+ Upload file</button>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">${cards || (loading || '<div style="font-size:12px;color:var(--text-faint);font-style:italic;padding:6px 2px">No attachments uploaded yet. Add passport copies, referral letters, insurance forms, flight or hotel confirmations…</div>')}</div>
+      <div style="font-size:10px;color:var(--text-faint);margin-top:6px">PDF, Word, Excel, images, text · max 800 KB per file</div>
+    </div>
+  `;
+}
+
+function handleAttachmentUpload(caseId) {
+  const input = document.getElementById(`att-input-${caseId}`);
+  const file = input?.files?.[0];
+  if (!file) return;
+  const category = document.getElementById(`att-cat-${caseId}`)?.value || 'Other';
+  uploadAttachment(caseId, file, category);
+  input.value = '';
+}
+
+async function uploadAttachment(caseId, file, category) {
+  if (file.size > ATTACHMENT_MAX_BYTES) {
+    toast(`File too large (${formatSize(file.size)}). Max 800 KB per file — compress or split it.`, 'error');
+    return;
+  }
+  const c = cases.find(x => x.id === caseId);
+  if (!c) return;
+  toast(`Uploading ${file.name}…`, 'info');
+  let base64;
+  try {
+    base64 = await new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload  = () => res(r.result.split(',')[1]);
+      r.onerror = () => rej(new Error('File read failed'));
+      r.readAsDataURL(file);
+    });
+  } catch(e) {
+    toast('Could not read file: ' + e.message, 'error');
+    return;
+  }
+  const id = 'att-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
+  const att = {
+    id, caseId,
+    name: file.name,
+    type: file.type || 'application/octet-stream',
+    size: file.size,
+    category: category || 'Other',
+    base64,
+    uploadedAt: new Date().toISOString()
+  };
+  if (!Array.isArray(c.attachments)) c.attachments = [];
+  c.attachments.push(att);
+  if (typeof db !== 'undefined' && db) {
+    try { await db.collection('case_attachments').doc(id).set(att); }
+    catch(e) { console.error('Attachment save failed:', e); toast('Cloud save failed: ' + (e.message||e.code), 'error'); }
+  }
+  toast(`Uploaded ${file.name}.`, 'success');
+  refreshCaseModalIfOpen();
+}
+
+async function loadAttachments(caseId) {
+  if (typeof db === 'undefined' || !db) return [];
+  try {
+    const snap = await db.collection('case_attachments').where('caseId', '==', caseId).get();
+    const list = snap.docs.map(d => d.data()).sort((a,b) => (a.uploadedAt||'').localeCompare(b.uploadedAt||''));
+    const c = cases.find(x => x.id === caseId);
+    if (c) c.attachments = list;
+    return list;
+  } catch(e) {
+    console.error('Attachment load failed:', e);
+    const c = cases.find(x => x.id === caseId);
+    if (c) c.attachments = [];
+    return [];
+  }
+}
+
+function findAttachment(attachmentId) {
+  for (const c of cases) {
+    const a = (c.attachments || []).find(x => x.id === attachmentId);
+    if (a) return a;
+  }
+  return null;
+}
+
+function viewAttachment(attachmentId) {
+  const a = findAttachment(attachmentId);
+  if (!a) return;
+  const dataUrl = `data:${a.type};base64,${a.base64}`;
+  if (a.type.startsWith('image/')) {
+    const w = window.open();
+    if (w) w.document.write(`<title>${escHtml(a.name)}</title><body style="margin:0;background:#222;display:flex;align-items:center;justify-content:center;min-height:100vh"><img src="${dataUrl}" style="max-width:100%;max-height:100vh"></body>`);
+  } else {
+    // Browsers can preview PDFs and text in an iframe via data URL.
+    const w = window.open();
+    if (w) w.document.write(`<title>${escHtml(a.name)}</title><body style="margin:0"><iframe src="${dataUrl}" style="width:100vw;height:100vh;border:none"></iframe></body>`);
+  }
+}
+
+function downloadAttachment(attachmentId) {
+  const a = findAttachment(attachmentId);
+  if (!a) return;
+  const link = document.createElement('a');
+  link.href = `data:${a.type};base64,${a.base64}`;
+  link.download = a.name;
+  link.click();
+}
+
+async function deleteAttachment(attachmentId) {
+  const a = findAttachment(attachmentId);
+  if (!a) return;
+  if (!confirm(`Delete "${a.name}"?`)) return;
+  const c = cases.find(x => x.id === a.caseId);
+  if (c) c.attachments = (c.attachments || []).filter(x => x.id !== attachmentId);
+  if (typeof db !== 'undefined' && db) {
+    try { await db.collection('case_attachments').doc(attachmentId).delete(); }
+    catch(e) { console.error('Delete failed:', e); }
+  }
+  toast('Attachment deleted.', 'info');
   refreshCaseModalIfOpen();
 }
 
