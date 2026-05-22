@@ -2812,74 +2812,7 @@ function selectFlight(el) {
 
 // ══════════════════════════════════════════════════════════════════
 // ESCORTS
-  const origin   = document.getElementById('fs-origin').value.trim().toUpperCase();
-  const dest     = document.getElementById('fs-dest').value.trim().toUpperCase();
-  const date     = document.getElementById('fs-date').value;          // YYYY-MM-DD
-  const cabin    = document.getElementById('fs-class').value;         // 1=eco 2=prem 3=biz 4=first
-  const adults   = document.getElementById('fs-pax').value;
-  const currency = document.getElementById('fs-currency').value;
-
-
-  if (!origin || !dest || !date) { toast('Fill in origin, destination and date.', 'error'); return; }
-
-  if (!apiKey || apiKey.length < 10) {
-    renderDemoFlights(origin, dest, date);
-    toast('No API key — showing demo results. Get your free key at serpapi.com.', 'info');
-    return;
-  }
-
-  const spinner = document.getElementById('flight-spinner');
-  spinner.style.display = 'inline-block';
-  const area = document.getElementById('flight-results-area');
-  area.innerHTML = '<div class="alert alert-info"><div class="spinner" style="display:inline-block;margin-right:8px"></div> Searching Google Flights…</div>';
-
-  // SerpApi Google Flights params
-  const params = new URLSearchParams({
-    engine: 'google_flights',
-    departure_id: origin,
-    arrival_id: dest,
-    outbound_date: date,
-    travel_class: cabin,
-    adults: adults,
-    currency: currency,
-    hl: 'en',
-    type: '2',          // one-way
-    api_key: apiKey
-  });
-
-  try {
-
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-
-    if (data.error) throw new Error(data.error);
-
-    // SerpApi returns best_flights and other_flights arrays
-    const flights = [
-      ...(data.best_flights || []),
-      ...(data.other_flights || [])
-    ];
-
-    if (!flights.length) throw new Error('NO_RESULTS');
-    renderSerpFlights(flights, origin, dest, date, currency);
-    toast(`${flights.length} flights found via Google Flights.`, 'success');
-
-  } catch(e) {
-    if (e.message === 'NO_RESULTS') {
-      area.innerHTML = '<div class="alert alert-warning">⚠ No flights found for this route and date. Try a different date or check the airport codes.</div>';
-    } else {
-      area.innerHTML = `<div class="alert alert-danger">
-        ✕ Search failed: ${e.message}<br/>
-        <span style="font-size:12px;margin-top:6px;display:block">
-          Verify your API key at <a href="https://serpapi.com/dashboard" target="_blank" style="color:var(--cyan)">serpapi.com/dashboard</a>.
-          Note: SerpApi blocks direct browser calls on some plans — if you see a CORS error, the platform needs a small backend proxy. Contact Dr. Sami for the Node.js proxy setup.
-        </span>
-      </div>`;
-      toast('Search failed — check API key or CORS.', 'error');
-    }
-  }
-  spinner.style.display = 'none';
-}
+// ══════════════════════════════════════════════════════════════════
 
 function renderSerpFlights(flights, origin, dest, date, currency) {
   const area = document.getElementById('flight-results-area');
@@ -3760,7 +3693,7 @@ async function init() {
   const fsEl = document.getElementById('fs-date');
   if (fsEl) fsEl.value = today;
   // Restore saved SerpApi key
-
+  const saved = localStorage.getItem('hwa_serp_key') || '';
   const keyEl = document.getElementById('serp-api-key');
   if (saved && keyEl) { keyEl.value = saved; updateSerpStatus(); }
   // Init Firebase + load data
