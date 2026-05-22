@@ -1977,8 +1977,196 @@ The AI will provide:
       <button class="btn btn-ghost btn-sm" onclick="extractFromCaseModal()">⎙ Extract Documents</button>
       <button class="btn btn-ghost btn-sm" onclick="flightFromModal()">✈ Search Flights</button>
       <button class="btn btn-ghost btn-sm" onclick="docsFromModal()">⬚ Generate Docs</button>
+      <button class="btn btn-ghost btn-sm" onclick="openAirlineMedifPicker()">📋 Airline MEDIF</button>
       <button class="btn btn-ghost btn-sm" onclick="openRepatReportFromModal()">📋 Repat Report</button>
       <button class="btn btn-danger btn-sm" onclick="deleteCase()">🗑 Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Airline MEDIF Form Modal ─── -->
+<div class="modal-backdrop" id="medif-modal" style="display:none" onclick="if(event.target===this)closeMedif()">
+  <div class="modal-box rr-modal" style="max-width:960px;max-height:96vh">
+    <div class="modal-header rr-no-print">
+      <h2>📋 Airline MEDIF — <span id="medif-airline-label"></span></h2>
+      <button class="modal-close" onclick="closeMedif()">✕</button>
+    </div>
+
+    <div id="medif-airline-info" class="rr-no-print" style="background:rgba(38,86,166,0.06);border:1px solid rgba(38,86,166,0.2);border-radius:6px;padding:10px 14px;font-size:12px;color:var(--text-dim);margin-bottom:14px;line-height:1.55"></div>
+
+    <div id="medif-printable">
+      <!-- Header for the generated PDF -->
+      <div style="border-bottom:2px solid #c0392b;padding-bottom:10px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:flex-end">
+        <div>
+          <div id="medif-pdf-airline" style="font-size:22px;font-weight:800;color:#0c1f3f;letter-spacing:-0.3px"></div>
+          <div style="font-size:12px;color:#6b7c93;margin-top:2px">Medical Information Form (MEDIF) — IATA Aerospace Medical Standard</div>
+        </div>
+        <div style="text-align:right;font-size:11px;color:#6b7c93">
+          <div>HealthWatch Assistance S.A.</div>
+          <div>Thermi · Thessaloniki · Greece</div>
+          <div id="medif-pdf-caseid" style="margin-top:2px;font-weight:600;color:#0c1f3f"></div>
+        </div>
+      </div>
+
+      <!-- Part 1 -->
+      <div class="rr-section">
+        <div class="rr-section-title">Part 1 · Passenger details</div>
+        <div class="rr-grid-3">
+          <div class="rr-field"><label>Surname</label><input id="m-surname"></div>
+          <div class="rr-field"><label>Forename(s)</label><input id="m-forename"></div>
+          <div class="rr-field"><label>Title</label>
+            <select id="m-title"><option value="">—</option><option>Mr</option><option>Mrs</option><option>Ms</option><option>Dr</option><option>Mx</option></select>
+          </div>
+          <div class="rr-field"><label>Date of birth</label><input id="m-dob" type="date"></div>
+          <div class="rr-field"><label>Sex</label>
+            <select id="m-sex"><option value="">—</option><option>M</option><option>F</option><option>Other</option></select>
+          </div>
+          <div class="rr-field"><label>Nationality</label><input id="m-nationality"></div>
+          <div class="rr-field"><label>Passport / ID</label><input id="m-passport"></div>
+          <div class="rr-field"><label>Weight (kg)</label><input id="m-weight" type="number" step="0.1"></div>
+          <div class="rr-field"><label>Height (cm)</label><input id="m-height" type="number" step="0.1"></div>
+        </div>
+      </div>
+
+      <!-- Part 2 -->
+      <div class="rr-section">
+        <div class="rr-section-title">Part 2 · Medical condition</div>
+        <div class="rr-grid-2">
+          <div class="rr-field"><label>Primary diagnosis</label><input id="m-diagnosis"></div>
+          <div class="rr-field"><label>ICD-10 code</label><input id="m-icd"></div>
+          <div class="rr-field"><label>Date of onset</label><input id="m-onset" type="date"></div>
+          <div class="rr-field"><label>Last episode / surgery</label><input id="m-last-episode" type="date"></div>
+        </div>
+        <div class="rr-grid-3" style="margin-top:10px">
+          <div class="rr-field"><label>Condition stability</label>
+            <select id="m-stability"><option value="">—</option><option>Stable</option><option>Improving</option><option>Deteriorating</option><option>Fluctuating</option></select>
+          </div>
+          <div class="rr-field"><label>Communicable disease?</label>
+            <select id="m-communicable"><option value="">—</option><option>No</option><option>Yes — controlled</option><option>Yes — active</option></select>
+          </div>
+          <div class="rr-field"><label>Mental capacity</label>
+            <select id="m-mental"><option value="">—</option><option>Normal</option><option>Impaired</option></select>
+          </div>
+        </div>
+        <div class="rr-field" style="margin-top:10px"><label>Brief clinical history</label><textarea id="m-history" rows="3"></textarea></div>
+      </div>
+
+      <!-- Part 3 -->
+      <div class="rr-section">
+        <div class="rr-section-title">Part 3 · Medication & equipment</div>
+        <div class="rr-grid-2">
+          <div class="rr-field"><label>Current medications (drug · dose · frequency)</label><textarea id="m-meds" rows="3"></textarea></div>
+          <div class="rr-field"><label>Medications to be carried in cabin</label><textarea id="m-meds-cabin" rows="3"></textarea></div>
+        </div>
+        <div class="rr-grid-2" style="margin-top:10px">
+          <div class="rr-field"><label>Medical equipment on board</label>
+            <textarea id="m-equipment" rows="2" placeholder="POC, CPAP, syringes, oximeter, glucometer…"></textarea>
+          </div>
+          <div class="rr-field"><label>Medication administered in flight?</label>
+            <select id="m-meds-inflight"><option value="">—</option><option>No</option><option>Yes — by patient</option><option>Yes — by escort</option></select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Part 4 -->
+      <div class="rr-section">
+        <div class="rr-section-title">Part 4 · Mobility</div>
+        <div class="rr-grid-3">
+          <div class="rr-field"><label>Mobility level</label>
+            <select id="m-mobility"><option value="">—</option><option value="walking">Walks unaided</option><option value="seat">Wheelchair to seat</option><option value="stretcher">Stretcher</option></select>
+          </div>
+          <div class="rr-field"><label>Wheelchair code</label>
+            <select id="m-wch"><option value="">—</option><option>WCHR — Ramp</option><option>WCHS — Steps</option><option>WCHC — Cabin seat</option></select>
+          </div>
+          <div class="rr-field"><label>Stretcher required?</label>
+            <select id="m-stretcher"><option value="">—</option><option>No</option><option>Yes</option></select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Part 5 -->
+      <div class="rr-section">
+        <div class="rr-section-title">Part 5 · Oxygen & special needs</div>
+        <div class="rr-grid-3">
+          <div class="rr-field"><label>Oxygen required?</label>
+            <select id="m-o2"><option value="">—</option><option value="none">No</option><option value="low">Yes — low</option><option value="high">Yes — high</option><option value="ventilator">Ventilator</option></select>
+          </div>
+          <div class="rr-field"><label>Flow rate (L/min)</label><input id="m-o2-flow" type="number" step="0.5"></div>
+          <div class="rr-field"><label>Continuous / intermittent</label>
+            <select id="m-o2-mode"><option value="">—</option><option>Continuous</option><option>Intermittent</option><option>On demand</option></select>
+          </div>
+          <div class="rr-field"><label>Personal POC?</label>
+            <select id="m-poc"><option value="">No</option><option>Yes</option></select>
+          </div>
+          <div class="rr-field"><label>POC model</label><input id="m-poc-model"></div>
+          <div class="rr-field"><label>Escort required?</label>
+            <select id="m-escort"><option value="">—</option><option>No</option><option>Yes — non-medical</option><option>Yes — nurse</option><option>Yes — physician</option></select>
+          </div>
+          <div class="rr-field"><label>Communication aids</label><input id="m-comm-aids"></div>
+          <div class="rr-field"><label>Special meal</label><input id="m-meal"></div>
+          <div class="rr-field"><label>Isolation required?</label>
+            <select id="m-isolation"><option value="">—</option><option>No</option><option>Yes</option></select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Part 6 -->
+      <div class="rr-section">
+        <div class="rr-section-title">Part 6 · Travel details</div>
+        <div class="rr-grid-3">
+          <div class="rr-field"><label>Flight number (out)</label><input id="m-flight-out"></div>
+          <div class="rr-field"><label>Flight date (out)</label><input id="m-flight-date" type="date"></div>
+          <div class="rr-field"><label>Flight time (out)</label><input id="m-flight-time" type="time"></div>
+          <div class="rr-field"><label>Origin (IATA)</label><input id="m-from-iata" style="text-transform:uppercase"></div>
+          <div class="rr-field"><label>Destination (IATA)</label><input id="m-to-iata" style="text-transform:uppercase"></div>
+          <div class="rr-field"><label>Cabin</label>
+            <select id="m-cabin"><option value="">—</option><option>Economy</option><option>Premium Economy</option><option>Business</option><option>First</option><option>Stretcher</option></select>
+          </div>
+          <div class="rr-field"><label>Return flight #</label><input id="m-flight-ret"></div>
+          <div class="rr-field"><label>Return date</label><input id="m-flight-ret-date" type="date"></div>
+          <div class="rr-field"><label>PNR</label><input id="m-pnr"></div>
+        </div>
+      </div>
+
+      <!-- Part 7 -->
+      <div class="rr-section">
+        <div class="rr-section-title">Part 7 · Treating physician declaration</div>
+        <div class="rr-grid-3">
+          <div class="rr-field"><label>Physician name</label><input id="m-md-name"></div>
+          <div class="rr-field"><label>Specialty</label><input id="m-md-specialty"></div>
+          <div class="rr-field"><label>License / registration #</label><input id="m-md-license"></div>
+          <div class="rr-field"><label>Phone</label><input id="m-md-phone"></div>
+          <div class="rr-field"><label>Email</label><input id="m-md-email"></div>
+          <div class="rr-field"><label>Fax</label><input id="m-md-fax"></div>
+        </div>
+        <div class="rr-field" style="margin-top:10px"><label>Address / hospital</label><input id="m-md-address"></div>
+        <div style="margin-top:14px;display:flex;gap:30px;align-items:flex-end">
+          <div style="flex:1;border-bottom:1px solid #888;height:38px"><span style="font-size:10px;color:#888">Signature</span></div>
+          <div style="width:120px;border:1px dashed #888;height:60px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#aaa">Stamp</div>
+          <div class="rr-field" style="width:160px"><label>Date</label><input id="m-md-date" type="date"></div>
+        </div>
+      </div>
+
+      <!-- Part 8 -->
+      <div class="rr-section" style="border-bottom:none">
+        <div class="rr-section-title">Part 8 · Issuing agency</div>
+        <div class="rr-grid-3">
+          <div class="rr-field"><label>Coordinator</label><input id="m-coord" placeholder="HWA case coordinator"></div>
+          <div class="rr-field"><label>HWA case #</label><input id="m-hwa-case" disabled></div>
+          <div class="rr-field"><label>Issue date</label><input id="m-issue-date" type="date"></div>
+        </div>
+        <div style="margin-top:12px;font-size:11px;color:#6b7c93;line-height:1.6">
+          HealthWatch Assistance S.A. · Thermi, Thessaloniki, Greece · www.healthwatch.gr · sami@healthwatch.gr<br>
+          This MEDIF is issued for medical clearance purposes only. Submit ≥ <span id="m-advance-hrs">48</span> hours before departure to <span id="m-airline-email">the airline medical desk</span>.
+        </div>
+      </div>
+    </div>
+
+    <div class="rr-no-print" style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap;border-top:1px solid var(--border);padding-top:16px">
+      <button class="btn btn-ghost btn-sm" onclick="saveMedifDraft()">💾 Save draft</button>
+      <button class="btn btn-primary btn-sm" onclick="generateMedifPdf()" id="medif-gen-btn">📄 Generate PDF</button>
+      <button class="btn btn-ghost btn-sm" onclick="emailMedifToAirline()">📨 Email to airline</button>
+      <button class="btn btn-ghost btn-sm" onclick="closeMedif()" style="margin-left:auto">Close</button>
     </div>
   </div>
 </div>
@@ -2260,6 +2448,7 @@ Avg flow: 3 L/min"></textarea>
 </script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
 <script>
 // ══════════════════════════════════════════════════════════════════
@@ -2749,6 +2938,229 @@ async function addTaskPrompt(caseId) {
 }
 
 // ─── AI: Suggest next actions ───
+// ─── Airline MEDIF: form, draft, PDF, email ───
+let currentMedifCaseId = null;
+let currentMedifAirlineKey = null;
+
+function openAirlineMedifPicker() {
+  if (!currentModalCaseId) return;
+  const caseId = currentModalCaseId;
+  closeCaseModal();
+  // Render a quick picker of all airlines in a fresh modal.
+  const cards = Object.entries(AIRLINE_REGISTRY).map(([k, a]) => `
+    <button onclick="openMedifForm('${caseId}','${k}'); document.getElementById('airline-picker').remove();"
+            style="display:flex;flex-direction:column;align-items:flex-start;gap:3px;padding:11px 13px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;cursor:pointer;color:var(--text);text-align:left">
+      <div style="font-size:13px;font-weight:700">${escHtml(a.name)} <span style="color:var(--text-faint);font-weight:500">· ${a.code}</span></div>
+      <div style="font-size:10px;color:var(--text-dim);line-height:1.4">${escHtml(a.medifNotes)}</div>
+      <div style="font-size:10px;color:var(--text-faint);margin-top:2px">${a.medicalEmail || 'no email on file'} · ${a.advanceNoticeHrs}h advance notice</div>
+    </button>
+  `).join('');
+  const html = `
+    <div id="airline-picker" class="modal-backdrop" style="display:flex" onclick="if(event.target===this)this.remove()">
+      <div class="modal-box" style="max-width:680px">
+        <div class="modal-header"><h2>Pick an airline for MEDIF</h2><button class="modal-close" onclick="document.getElementById('airline-picker').remove()">✕</button></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">${cards}</div>
+      </div>
+    </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function openMedifForm(caseId, airlineKey = null) {
+  const c = cases.find(x => x.id === caseId); if (!c) return;
+  if (!airlineKey) {
+    // Ask which airline
+    const keys = Object.keys(AIRLINE_REGISTRY);
+    const labels = keys.map(k => `${k} (${AIRLINE_REGISTRY[k].name})`).join('\n');
+    const pick = prompt(`Pick the airline by key:\n\n${labels}\n\nEnter the key:`);
+    if (!pick) return;
+    if (!AIRLINE_REGISTRY[pick]) { toast('Unknown airline key.', 'error'); return; }
+    airlineKey = pick;
+  }
+  currentMedifCaseId = caseId;
+  currentMedifAirlineKey = airlineKey;
+  const a = AIRLINE_REGISTRY[airlineKey];
+  document.getElementById('medif-airline-label').textContent = `${a.name} · ${c.id}`;
+  document.getElementById('medif-pdf-airline').textContent = `${a.name} — Medical Information Form`;
+  document.getElementById('medif-pdf-caseid').textContent = `Case ${c.id} · ${c.firstname||''} ${c.lastname||''}`.trim();
+  document.getElementById('medif-airline-info').innerHTML = `
+    <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:center">
+      <div style="font-size:13px;color:var(--text);font-weight:600">${a.name} (${a.code})</div>
+      <div>📧 ${a.medicalEmail ? `<a href="mailto:${a.medicalEmail}" style="color:var(--hwa-navy)">${a.medicalEmail}</a>` : '<em style="color:var(--text-faint)">no email on file</em>'}</div>
+      <div>🌐 <a href="${a.medicalUrl}" target="_blank" rel="noopener" style="color:var(--hwa-navy)">Official form</a></div>
+      <div>⏱ ${a.advanceNoticeHrs}h advance notice</div>
+      <div>🗣 ${a.language}</div>
+    </div>
+    <div style="margin-top:6px;font-size:11px">${escHtml(a.medifNotes)}</div>
+  `;
+  document.getElementById('m-airline-email').textContent = a.medicalEmail || 'the airline medical desk';
+  document.getElementById('m-advance-hrs').textContent = String(a.advanceNoticeHrs);
+
+  // Prefill from case + saved draft (draft takes precedence)
+  const draft = c.medifDrafts?.[airlineKey] || {};
+  const today = new Date().toISOString().slice(0,10);
+  const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
+
+  setVal('m-surname',    draft.surname    ?? c.lastname);
+  setVal('m-forename',   draft.forename   ?? c.firstname);
+  setVal('m-title',      draft.title      ?? '');
+  setVal('m-dob',        draft.dob        ?? c.dob);
+  setVal('m-sex',        draft.sex        ?? (c.gender || ''));
+  setVal('m-nationality',draft.nationality?? c.nationality);
+  setVal('m-passport',   draft.passport   ?? c.passport);
+  setVal('m-weight',     draft.weight     ?? '');
+  setVal('m-height',     draft.height     ?? '');
+
+  setVal('m-diagnosis',  draft.diagnosis  ?? c.diagnosis);
+  setVal('m-icd',        draft.icd        ?? c.icd);
+  setVal('m-onset',      draft.onset      ?? c.admissionDate);
+  setVal('m-last-episode', draft.lastEpisode ?? '');
+  setVal('m-stability',  draft.stability  ?? 'Stable');
+  setVal('m-communicable', draft.communicable ?? (c.infect === 'yes' ? 'Yes — controlled' : 'No'));
+  setVal('m-mental',     draft.mental     ?? 'Normal');
+  setVal('m-history',    draft.history    ?? c.clinicalSummary);
+
+  setVal('m-meds',         draft.meds        ?? c.medications);
+  setVal('m-meds-cabin',   draft.medsCabin   ?? '');
+  setVal('m-equipment',    draft.equipment   ?? '');
+  setVal('m-meds-inflight',draft.medsInflight?? '');
+
+  setVal('m-mobility', draft.mobility ?? c.mobility);
+  setVal('m-wch',      draft.wch      ?? c.wheelchairCode);
+  setVal('m-stretcher',draft.stretcher?? (c.mobility === 'stretcher' ? 'Yes' : 'No'));
+
+  setVal('m-o2',       draft.o2       ?? c.o2);
+  setVal('m-o2-flow',  draft.o2Flow   ?? c.o2FlowRate);
+  setVal('m-o2-mode',  draft.o2Mode   ?? '');
+  setVal('m-poc',      draft.poc      ?? '');
+  setVal('m-poc-model',draft.pocModel ?? '');
+  setVal('m-escort',   draft.escort   ?? (c.escortRequired === 'yes' ? 'Yes — nurse' : ''));
+  setVal('m-comm-aids',draft.commAids ?? '');
+  setVal('m-meal',     draft.meal     ?? '');
+  setVal('m-isolation',draft.isolation?? (c.infect === 'yes' ? 'Yes' : 'No'));
+
+  setVal('m-flight-out',     draft.flightOut     ?? c.flightOutNumber);
+  setVal('m-flight-date',    draft.flightDate    ?? c.flightOutDate);
+  setVal('m-flight-time',    draft.flightTime    ?? c.flightOutTime);
+  setVal('m-from-iata',      ((draft.fromIata     ?? c.originIata) || '').toUpperCase());
+  setVal('m-to-iata',        ((draft.toIata       ?? c.destIata  ) || '').toUpperCase());
+  setVal('m-cabin',          draft.cabin         ?? c.flightOutCabin);
+  setVal('m-flight-ret',     draft.flightRet     ?? c.flightRetNumber);
+  setVal('m-flight-ret-date',draft.flightRetDate ?? c.flightRetDate);
+  setVal('m-pnr',            draft.pnr           ?? c.pnr);
+
+  setVal('m-md-name',     draft.mdName     ?? c.treatingDoctor);
+  setVal('m-md-specialty',draft.mdSpecialty?? '');
+  setVal('m-md-license',  draft.mdLicense  ?? '');
+  setVal('m-md-phone',    draft.mdPhone    ?? c.treatingDoctorPhone);
+  setVal('m-md-email',    draft.mdEmail    ?? '');
+  setVal('m-md-fax',      draft.mdFax      ?? '');
+  setVal('m-md-address',  draft.mdAddress  ?? c.currentHosp);
+  setVal('m-md-date',     draft.mdDate     ?? today);
+
+  setVal('m-coord',      draft.coord     ?? '');
+  setVal('m-hwa-case',   c.id);
+  setVal('m-issue-date', draft.issueDate ?? today);
+
+  document.getElementById('medif-modal').style.display = 'flex';
+}
+function closeMedif() {
+  document.getElementById('medif-modal').style.display = 'none';
+  currentMedifCaseId = null; currentMedifAirlineKey = null;
+}
+function collectMedifFormData() {
+  const v = id => document.getElementById(id)?.value || '';
+  return {
+    surname:v('m-surname'), forename:v('m-forename'), title:v('m-title'), dob:v('m-dob'), sex:v('m-sex'),
+    nationality:v('m-nationality'), passport:v('m-passport'), weight:v('m-weight'), height:v('m-height'),
+    diagnosis:v('m-diagnosis'), icd:v('m-icd'), onset:v('m-onset'), lastEpisode:v('m-last-episode'),
+    stability:v('m-stability'), communicable:v('m-communicable'), mental:v('m-mental'), history:v('m-history'),
+    meds:v('m-meds'), medsCabin:v('m-meds-cabin'), equipment:v('m-equipment'), medsInflight:v('m-meds-inflight'),
+    mobility:v('m-mobility'), wch:v('m-wch'), stretcher:v('m-stretcher'),
+    o2:v('m-o2'), o2Flow:v('m-o2-flow'), o2Mode:v('m-o2-mode'), poc:v('m-poc'), pocModel:v('m-poc-model'),
+    escort:v('m-escort'), commAids:v('m-comm-aids'), meal:v('m-meal'), isolation:v('m-isolation'),
+    flightOut:v('m-flight-out'), flightDate:v('m-flight-date'), flightTime:v('m-flight-time'),
+    fromIata:v('m-from-iata'), toIata:v('m-to-iata'), cabin:v('m-cabin'),
+    flightRet:v('m-flight-ret'), flightRetDate:v('m-flight-ret-date'), pnr:v('m-pnr'),
+    mdName:v('m-md-name'), mdSpecialty:v('m-md-specialty'), mdLicense:v('m-md-license'),
+    mdPhone:v('m-md-phone'), mdEmail:v('m-md-email'), mdFax:v('m-md-fax'),
+    mdAddress:v('m-md-address'), mdDate:v('m-md-date'),
+    coord:v('m-coord'), issueDate:v('m-issue-date'),
+    updatedAt:new Date().toISOString()
+  };
+}
+async function saveMedifDraft() {
+  if (!currentMedifCaseId || !currentMedifAirlineKey) return;
+  const c = cases.find(x => x.id === currentMedifCaseId); if (!c) return;
+  if (!c.medifDrafts) c.medifDrafts = {};
+  c.medifDrafts[currentMedifAirlineKey] = collectMedifFormData();
+  await persistCase(c);
+  toast('MEDIF draft saved.', 'success');
+}
+async function generateMedifPdf() {
+  if (!currentMedifCaseId || !currentMedifAirlineKey) return;
+  if (typeof html2pdf === 'undefined') { toast('PDF library still loading — try again in a second.', 'error'); return; }
+  await saveMedifDraft();  // persist before exporting
+  const btn = document.getElementById('medif-gen-btn');
+  btn.disabled = true; const old = btn.textContent; btn.textContent = 'Generating…';
+  try {
+    const c = cases.find(x => x.id === currentMedifCaseId);
+    const a = AIRLINE_REGISTRY[currentMedifAirlineKey];
+    const el = document.getElementById('medif-printable');
+    const filename = `MEDIF_${a.code}_${c.id}_${new Date().toISOString().slice(0,10)}.pdf`;
+    // Render to PDF as a Blob so we can both download it and save it as an attachment.
+    const pdfBlob = await html2pdf().set({
+      margin: [10, 10, 14, 10],
+      filename,
+      image: { type: 'jpeg', quality: 0.95 },
+      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      pagebreak: { mode: ['css','legacy'] }
+    }).from(el).outputPdf('blob');
+
+    // Download
+    const a1 = document.createElement('a');
+    a1.href = URL.createObjectURL(pdfBlob);
+    a1.download = filename;
+    a1.click();
+
+    // Save as attachment (category "Generated MEDIF") so it persists on the case.
+    if (pdfBlob.size <= ATTACHMENT_MAX_BYTES) {
+      const file = new File([pdfBlob], filename, { type:'application/pdf' });
+      await uploadAttachment(c.id, file, 'Generated MEDIF');
+    } else {
+      toast(`PDF (${formatSize(pdfBlob.size)}) too large to auto-attach. Downloaded only.`, 'info');
+    }
+    toast('MEDIF PDF generated & saved to case.', 'success');
+  } catch(e) {
+    console.error(e); toast('PDF generation failed: ' + e.message, 'error');
+  }
+  btn.disabled = false; btn.textContent = old;
+}
+function emailMedifToAirline() {
+  if (!currentMedifAirlineKey) return;
+  const a = AIRLINE_REGISTRY[currentMedifAirlineKey];
+  if (!a.medicalEmail) { toast('No email on file for this airline — copy the form URL and email manually.', 'info'); return; }
+  const c = cases.find(x => x.id === currentMedifCaseId);
+  const subj = encodeURIComponent(`MEDIF — ${c?.firstname||''} ${c?.lastname||''} — Case ${c?.id||''}`);
+  const body = encodeURIComponent(`Dear ${a.name} Medical Desk,
+
+Please find attached the MEDIF for the patient below requesting medical clearance for the planned itinerary.
+
+Patient: ${c?.firstname||''} ${c?.lastname||''} (DOB ${c?.dob||'?'})
+Diagnosis: ${c?.diagnosis||'?'}
+Flight: ${c?.flightOutNumber||'?'} on ${c?.flightOutDate||'?'} (${c?.originIata||'?'} → ${c?.destIata||'?'})
+
+Please confirm receipt and clearance at your earliest convenience.
+
+Kind regards,
+HealthWatch Assistance S.A.
+Thermi, Thessaloniki, Greece
+www.healthwatch.gr · sami@healthwatch.gr
+[HWA case ${c?.id||''}]`);
+  window.location.href = `mailto:${a.medicalEmail}?subject=${subj}&body=${body}`;
+  toast('Opening your email client — attach the downloaded MEDIF PDF before sending.', 'info');
+}
+
 async function aiSuggestTasks(caseId) {
   const c = cases.find(x => x.id === caseId); if (!c) return;
   const key = getAnthropicKey();
@@ -2848,22 +3260,100 @@ function selectDocType(el, type) {
   if (row) row.style.display = (type === 'medif') ? 'block' : 'none';
 }
 
-// Airline registry — used for MEDIF formatting and (later) Outlook email recipient.
-// Email + medifNotes will be filled in once you send the real MEDIF PDFs and contacts.
+// Airline registry — used for MEDIF form prefill, branding, and (later) Outlook
+// email recipient. `medicalEmail` populated where publicly known; keep blank
+// when not verified so we don't email the wrong inbox.
 const AIRLINE_REGISTRY = {
-  aegean:    { name: 'Aegean Airlines',    code: 'A3', email: '', medifNotes: 'Standard IATA MEDIF; Aegean header.' },
-  lufthansa: { name: 'Lufthansa',          code: 'LH', email: '', medifNotes: 'Lufthansa MEDIF (bilingual DE/EN); 4 pages; declaration by treating physician.' },
-  swiss:     { name: 'SWISS',              code: 'LX', email: '', medifNotes: 'SWISS MEDIF; uses Lufthansa Group MEDIF format.' },
-  austrian:  { name: 'Austrian Airlines',  code: 'OS', email: '', medifNotes: 'Austrian MEDIF; uses Lufthansa Group MEDIF format.' },
-  airfrance: { name: 'Air France',         code: 'AF', email: '', medifNotes: 'INCAD/Air France MEDIF; bilingual FR/EN; SAPHIR medical clearance.' },
-  klm:       { name: 'KLM',                code: 'KL', email: '', medifNotes: 'KLM MEDA form; aligned with AF-KL group format.' },
-  ba:        { name: 'British Airways',    code: 'BA', email: '', medifNotes: 'BA MEDIF; passenger medical clearance unit (PMCU).' },
-  ita:       { name: 'ITA Airways',        code: 'AZ', email: '', medifNotes: 'ITA MEDIF; bilingual IT/EN.' },
-  turkish:   { name: 'Turkish Airlines',   code: 'TK', email: '', medifNotes: 'Turkish Airlines MEDIF; bilingual TR/EN.' },
-  pegasus:   { name: 'Pegasus Airlines',   code: 'PC', email: '', medifNotes: 'Pegasus medical clearance form (simpler than full IATA MEDIF).' },
-  ryanair:   { name: 'Ryanair',            code: 'FR', email: '', medifNotes: 'Ryanair uses a Fitness-to-Fly form rather than a full MEDIF.' },
-  easyjet:   { name: 'easyJet',            code: 'U2', email: '', medifNotes: 'easyJet MEDIF + assisted travel declaration.' },
-  wizz:      { name: 'Wizz Air',           code: 'W6', email: '', medifNotes: 'Wizz Air medical fitness declaration.' }
+  aegean: {
+    name: 'Aegean Airlines', code: 'A3',
+    medicalEmail: '', medicalUrl: 'https://en.aegeanair.com/-/media/files/medif---english.pdf?la=en',
+    advanceNoticeHrs: 48, language: 'EN/EL',
+    medifNotes: 'Aegean standard MEDIF (single-page IATA-derived).'
+  },
+  lufthansa: {
+    name: 'Lufthansa', code: 'LH',
+    medicalEmail: 'medicaloperation@dlh.de',
+    medicalUrl: 'https://www.lufthansa.com/content/dam/lh/documents/prepare-for-your-trip/special-travel-needs/travelling-healthy/lh_medif_EN.pdf',
+    advanceNoticeHrs: 48, language: 'EN/DE',
+    medifNotes: 'Lufthansa Group MEDIF (bilingual EN/DE); shared format with SWISS, Austrian, Brussels.'
+  },
+  swiss: {
+    name: 'SWISS', code: 'LX',
+    medicalEmail: 'medicaloperation@dlh.de',
+    medicalUrl: 'https://www.swiss.com/medicalservices/en/health/medical-clearance-to-fly/saf-medif-form-and-medical-certificates',
+    advanceNoticeHrs: 48, language: 'EN/DE',
+    medifNotes: 'SWISS uses Lufthansa Group MEDIF. Submit via med.swiss.com portal at least 48 h before departure.'
+  },
+  austrian: {
+    name: 'Austrian Airlines', code: 'OS',
+    medicalEmail: 'medicaloperation@dlh.de',
+    medicalUrl: 'https://www.austrian.com/content/dam/austrian/global/documents/plan/medical-care-form-en-201503.pdf',
+    advanceNoticeHrs: 48, language: 'EN/DE',
+    medifNotes: 'Austrian Medical Care Form (Lufthansa Group MEDIF format).'
+  },
+  airfrance: {
+    name: 'Air France', code: 'AF',
+    medicalEmail: 'saphir.passagershandicapes@airfrance.fr',
+    medicalUrl: 'https://www.airfrance.com/health',
+    advanceNoticeHrs: 48, language: 'EN/FR',
+    medifNotes: 'INCAD / SAPHIR medical clearance. Shared form with KLM under AF-KL group.'
+  },
+  klm: {
+    name: 'KLM', code: 'KL',
+    medicalEmail: 'meda@klm.com',
+    medicalUrl: 'https://img.static-kl.com/m/65a886d613da0630/original/Medical-Information-Form-A-English-only.pdf',
+    advanceNoticeHrs: 48, language: 'EN/NL',
+    medifNotes: 'KLM MEDA form (AF-KL group). Two-part form: A by physician, B by passenger.'
+  },
+  ba: {
+    name: 'British Airways', code: 'BA',
+    medicalEmail: 'passengermedicalclearance@ba.com',
+    medicalUrl: 'https://www.britishairways.com/cms/global/pdfs/health/BA_Medical_Information_Form.pdf',
+    advanceNoticeHrs: 72, language: 'EN',
+    medifNotes: 'BA Passenger Medical Clearance Unit (PMCU). 72h advance notice for non-routine.'
+  },
+  ita: {
+    name: 'ITA Airways', code: 'AZ',
+    medicalEmail: 'medical@ita-airways.com',
+    medicalUrl: 'https://www.ita-airways.com/content/dam/ita/files/IT/volare/organizzailtuoviaggio/MEDIF_Version_EN_edit.pdf',
+    advanceNoticeHrs: 48, language: 'EN/IT',
+    medifNotes: 'ITA Airways MEDIF (bilingual IT/EN).'
+  },
+  turkish: {
+    name: 'Turkish Airlines', code: 'TK',
+    medicalEmail: 'medical@thy.com',
+    medicalUrl: 'https://www.turkishairlines.com/en-int/any-questions/special-assistance/medical-form/',
+    advanceNoticeHrs: 48, language: 'EN/TR',
+    medifNotes: 'Turkish Airlines MEDIF (bilingual TR/EN). Submit via special-assistance form online.'
+  },
+  pegasus: {
+    name: 'Pegasus Airlines', code: 'PC',
+    medicalEmail: 'specialcare@flypgs.com',
+    medicalUrl: 'https://flypgs.com/en/pegasus-info/special-services',
+    advanceNoticeHrs: 48, language: 'EN/TR',
+    medifNotes: 'Pegasus simpler medical clearance form (request via special-services email).'
+  },
+  ryanair: {
+    name: 'Ryanair', code: 'FR',
+    medicalEmail: 'specialassist@ryanair.com',
+    medicalUrl: 'https://help.ryanair.com/hc/en-gb/articles/12892718483089-Medical-Equipment-Baggage-Waiver-Letter',
+    advanceNoticeHrs: 48, language: 'EN',
+    medifNotes: 'Ryanair does not use full MEDIF — only a Fit-to-Fly + Medical Equipment Baggage Waiver. Form below is treated as fit-to-fly evidence to attach.'
+  },
+  easyjet: {
+    name: 'easyJet', code: 'U2',
+    medicalEmail: 'assistance@easyjet.com',
+    medicalUrl: 'https://www.easyjet.com/en/help/special-assistance',
+    advanceNoticeHrs: 48, language: 'EN',
+    medifNotes: 'easyJet MEDIF + assisted travel declaration.'
+  },
+  wizz: {
+    name: 'Wizz Air', code: 'W6',
+    medicalEmail: 'specialassistance@wizzair.com',
+    medicalUrl: 'https://wizzair.com/en-gb/information-and-services/travel-information/special-assistance',
+    advanceNoticeHrs: 48, language: 'EN',
+    medifNotes: 'Wizz Air medical fitness declaration (less prescriptive than IATA MEDIF).'
+  }
 };
 
 // ══════════════════════════════════════════════════════════════════
