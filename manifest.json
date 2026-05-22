@@ -1,0 +1,21 @@
+{
+  "name": "HWA Repatriation Hub",
+  "short_name": "HWA Repat",
+  "description": "HealthWatch Assistance medical repatriation case management — patients, MEDIFs, flights, escorts, documents.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0c1f3f",
+  "theme_color": "#1a2f5e",
+  "categories": ["medical", "productivity", "business"],
+  "lang": "en",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

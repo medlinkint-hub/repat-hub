@@ -5,6 +5,12 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
 <meta name="theme-color" content="#1a2f5e"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="HWA Repat"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<link rel="manifest" href="manifest.json"/>
+<!-- Inline SVG app icon used by both manifest and apple-touch-icon (no extra file needed) -->
+<link rel="apple-touch-icon" href='data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180"><rect width="180" height="180" rx="36" fill="%231a2f5e"/><text x="50%25" y="55%25" dominant-baseline="middle" text-anchor="middle" font-family="Arial,sans-serif" font-weight="800" font-size="92" fill="%23ffffff">H</text><circle cx="135" cy="135" r="12" fill="%23c0392b"/></svg>'/>
 <title>HWA Repatriation Hub · HealthWatch Assistance</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
@@ -3414,6 +3420,7 @@ function renderAttachmentsBlock(c) {
         <div style="font-size:11px;color:var(--text-dim)">${new Date(a.uploadedAt).toLocaleString()} · ${formatSize(a.size)}</div>
       </div>
       <button class="btn btn-ghost btn-sm" onclick="viewAttachment('${a.id}')" title="View">👁</button>
+      <button class="btn btn-ghost btn-sm" onclick="shareAttachment('${a.id}')" title="Share">↗</button>
       <button class="btn btn-ghost btn-sm" onclick="downloadAttachment('${a.id}')" title="Download">⬇</button>
       <button class="btn btn-danger btn-sm" onclick="deleteAttachment('${a.id}')" title="Delete">✕</button>
     </div>
@@ -3439,7 +3446,11 @@ function renderAttachmentsBlock(c) {
           <input type="file" id="att-input-${c.id}" style="display:none"
                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.tif,.tiff,.xls,.xlsx,.txt"
                  onchange="handleAttachmentUpload('${c.id}')">
-          <button class="btn btn-ghost btn-sm" onclick="document.getElementById('att-input-${c.id}').click()">+ Upload file</button>
+          <input type="file" id="att-cam-${c.id}" style="display:none"
+                 accept="image/*" capture="environment"
+                 onchange="handleAttachmentCamera('${c.id}')">
+          <button class="btn btn-ghost btn-sm" onclick="document.getElementById('att-cam-${c.id}').click()" title="Take a photo with the camera">📷 Photo</button>
+          <button class="btn btn-ghost btn-sm" onclick="document.getElementById('att-input-${c.id}').click()">+ Upload</button>
         </div>
       </div>
       <div style="display:flex;flex-direction:column;gap:6px">${cards || (loading || '<div style="font-size:12px;color:var(--text-faint);font-style:italic;padding:6px 2px">No attachments uploaded yet. Add passport copies, referral letters, insurance forms, flight or hotel confirmations…</div>')}</div>
@@ -3455,6 +3466,48 @@ function handleAttachmentUpload(caseId) {
   const category = document.getElementById(`att-cat-${caseId}`)?.value || 'Other';
   uploadAttachment(caseId, file, category);
   input.value = '';
+}
+function handleAttachmentCamera(caseId) {
+  const input = document.getElementById(`att-cam-${caseId}`);
+  const file = input?.files?.[0];
+  if (!file) return;
+  // Photos from the camera arrive as image/jpeg with a generic name. Rename to
+  // include the case id, the category, and a timestamp so attachments are easy
+  // to recognise later.
+  const category = document.getElementById(`att-cat-${caseId}`)?.value || 'Other';
+  const ts = new Date().toISOString().replace(/[:.]/g,'-').slice(0,19);
+  const renamed = new File([file], `${caseId}_${category.replace(/[^A-Za-z0-9]+/g,'-')}_${ts}.jpg`, { type: file.type || 'image/jpeg' });
+  uploadAttachment(caseId, renamed, category);
+  input.value = '';
+}
+
+// ─── Native share (Web Share API) with graceful fallback ───
+async function shareBlob(blob, filename, fallbackMsg) {
+  const file = new File([blob], filename, { type: blob.type });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: filename }); return true; }
+    catch(e) { if (e.name === 'AbortError') return false; }
+  }
+  // Fallback: trigger a download with a toast hint
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  toast(fallbackMsg || 'Saved — share isn\'t supported in this browser.', 'info');
+  return false;
+}
+async function shareAttachment(id) {
+  const a = findAttachment(id); if (!a) return;
+  const bin = Uint8Array.from(atob(a.base64), c => c.charCodeAt(0));
+  const blob = new Blob([bin], { type: a.type });
+  shareBlob(blob, a.name, 'Downloaded. Share via WhatsApp/Outlook from your Files app.');
+}
+async function shareSavedDoc(caseId, idx) {
+  const c = cases.find(x => x.id === caseId); if (!c?.documents?.[idx]) return;
+  const d = c.documents[idx];
+  const names = { ftf:'Fit-to-Fly', medif:'MEDIF', 'escort-brief':'Escort-Briefing', 'cost-estimate':'Cost-Estimate' };
+  const fname = `HWA_${names[d.type]||d.type}_${caseId}_${d.generatedAt.slice(0,10)}.txt`;
+  shareBlob(new Blob([d.content], { type:'text/plain' }), fname);
 }
 
 async function uploadAttachment(caseId, file, category) {
@@ -3580,6 +3633,7 @@ function renderSavedDocsBlock(c) {
         <div style="font-size:11px;color:var(--text-dim)">${new Date(d.generatedAt).toLocaleString()} · ${(d.lang||'').toUpperCase()} · ${d.content.length.toLocaleString()} chars</div>
       </div>
       <button class="btn btn-ghost btn-sm" onclick="viewSavedDoc('${c.id}',${idx})" title="View">👁</button>
+      <button class="btn btn-ghost btn-sm" onclick="shareSavedDoc('${c.id}',${idx})" title="Share">↗</button>
       <button class="btn btn-ghost btn-sm" onclick="downloadSavedDoc('${c.id}',${idx})" title="Download">⬇</button>
       <button class="btn btn-danger btn-sm" onclick="deleteSavedDoc('${c.id}',${idx})" title="Delete">✕</button>
     </div>
