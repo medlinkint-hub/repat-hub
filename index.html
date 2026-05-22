@@ -1104,7 +1104,7 @@ input.ie-filled, select.ie-filled, textarea.ie-filled {
       <div class="card-header"><h3>Logistics &amp; Flight Plan</h3></div>
 
       <!-- Origin / Destination summary -->
-      <div class="form-section-title" style="border-top:none;padding-top:0">📍 Origin &amp; Final Destination</div>
+      <div class="form-section-title" style="border-top:none;padding-top:0">📍 Patient Origin &amp; Final Destination</div>
       <div class="form-grid">
         <div class="form-group">
           <label>Origin City</label>
@@ -1138,6 +1138,35 @@ input.ie-filled, select.ie-filled, textarea.ie-filled {
           <label>Earliest Departure</label>
           <input type="date" id="f-depart-date" />
         </div>
+      </div>
+
+      <!-- ── MEDICAL ESCORT TRAVEL ── -->
+      <div class="form-section-title">🧑‍⚕ Medical Escort Travel <span style="font-weight:400;color:var(--text-dim);font-size:11px;text-transform:none;letter-spacing:0">&nbsp;— escort pickup &amp; return legs are included in AI planning</span></div>
+      <div class="form-grid cols-3">
+        <div class="form-group">
+          <label>Escort Name</label>
+          <input type="text" id="f-escort-name" placeholder="Dr. Eleni Papadopoulou" />
+        </div>
+        <div class="form-group">
+          <label>Escort Origin City</label>
+          <input type="text" id="f-escort-origin-city" placeholder="Thessaloniki" />
+        </div>
+        <div class="form-group">
+          <label>Escort Origin Airport (IATA)</label>
+          <input type="text" id="f-escort-origin-iata" placeholder="SKG" maxlength="3" style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase()" />
+        </div>
+        <div class="form-group">
+          <label>Escort Destination City <span style="color:var(--text-faint);font-weight:400">(usually home base)</span></label>
+          <input type="text" id="f-escort-dest-city" placeholder="Thessaloniki" />
+        </div>
+        <div class="form-group">
+          <label>Escort Destination Airport (IATA)</label>
+          <input type="text" id="f-escort-dest-iata" placeholder="SKG" maxlength="3" style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase()" />
+        </div>
+      </div>
+      <div style="font-size:12px;color:var(--text-dim);background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 14px;margin-top:6px;line-height:1.6">
+        <strong style="color:var(--hwa-navy)">Full repatriation route planned by AI:</strong>
+        Escort origin → Patient origin (pickup) → Patient destination (with patient) → Escort destination (return)
       </div>
 
       <!-- ── MULTI-LEG FLIGHT PLANNER ── -->
@@ -2149,6 +2178,11 @@ function gatherFormData() {
     destCity: v('f-dest-city'), destCountry: v('f-dest-country'),
     destIata: v('f-dest-iata').toUpperCase(),
     destHosp: v('f-dest-hosp'), departDate: v('f-depart-date'),
+    escortName: v('f-escort-name'),
+    escortOriginCity: v('f-escort-origin-city'),
+    escortOriginIata: v('f-escort-origin-iata').toUpperCase(),
+    escortDestCity: v('f-escort-dest-city'),
+    escortDestIata: v('f-escort-dest-iata').toUpperCase(),
     special: v('f-special'),
     transport: activeTransportMode,
     flightLegs: getFlightLegsData()
@@ -2165,7 +2199,9 @@ function resetForm() {
    'f-policy','f-contact','f-current-hosp','f-diagnosis','f-icd','f-clinical',
    'f-bp','f-hr','f-spo2','f-temp','f-gcs','f-rr','f-origin-city','f-origin-country',
    'f-origin-iata','f-dest-city','f-dest-country','f-dest-iata','f-dest-hosp',
-   'f-depart-date','f-special'].forEach(id => {
+   'f-depart-date','f-special',
+   'f-escort-name','f-escort-origin-city','f-escort-origin-iata',
+   'f-escort-dest-city','f-escort-dest-iata'].forEach(id => {
     const el = document.getElementById(id);
     if (el) { el.value = ''; el.style.borderColor = ''; el.classList.remove('ie-filled'); }
   });
@@ -2465,11 +2501,17 @@ CLINICAL FLAGS:
 - Infectious / isolation: ${c.infect}
 
 LOGISTICS:
-- Origin: ${c.originCity||'unknown'}, ${c.originCountry||'unknown'} (Airport: ${c.originIata||'unknown'})
-- Destination: ${c.destCity||'unknown'}, ${c.destCountry||'unknown'} (Airport: ${c.destIata||'unknown'})
+- Patient origin: ${c.originCity||'unknown'}, ${c.originCountry||'unknown'} (Airport: ${c.originIata||'unknown'})
+- Patient destination: ${c.destCity||'unknown'}, ${c.destCountry||'unknown'} (Airport: ${c.destIata||'unknown'})
 - Receiving hospital: ${c.destHosp||'unknown'}
 - Earliest departure: ${c.departDate||'ASAP'}
 - Special requirements: ${c.special||'None'}
+
+MEDICAL ESCORT TRAVEL (plan ALL three legs):
+- Escort: ${c.escortName||'TBD'}
+- Leg A — Escort outbound: ${c.escortOriginCity||'unknown'} (${c.escortOriginIata||'?'}) → ${c.originCity||'patient origin'} (${c.originIata||'?'})
+- Leg B — Patient repatriation (escort accompanies): ${c.originCity||'patient origin'} (${c.originIata||'?'}) → ${c.destCity||'patient destination'} (${c.destIata||'?'})
+- Leg C — Escort return: ${c.destCity||'patient destination'} (${c.destIata||'?'}) → ${c.escortDestCity||'escort home'} (${c.escortDestIata||'?'})
 ${c.flightLegs && c.flightLegs.length ? `
 FLIGHT ITINERARY (${c.flightLegs.length} leg${c.flightLegs.length>1?'s':''}):
 ${c.flightLegs.map((l,i) => {
@@ -2517,11 +2559,15 @@ Your evaluation MUST include:
 6. AIRLINE SPECIAL SERVICE REQUESTS (SSRs)
    - List required SSR codes (MEDA, STCR, WCHR, WCHS, OXYG, etc.)
 
-7. STEP-BY-STEP REPATRIATION PLAN
-   - Numbered steps from current location to receiving hospital
+7. STEP-BY-STEP REPATRIATION PLAN — FULL ESCORT + PATIENT JOURNEY
+   Plan the COMPLETE itinerary across all three legs:
+   - Leg A (escort outbound): Escort origin airport → Patient origin airport. Recommend carriers, timing relative to patient transfer, hotel/rest needs.
+   - Leg B (patient repatriation, escort accompanying): Patient origin → Patient destination. Carrier, cabin, SSRs, in-flight medical setup.
+   - Leg C (escort return): Patient destination → Escort destination. Earliest realistic return flight, layover considerations, escort handover at receiving hospital before departure.
+   For each leg list: route, recommended carriers, estimated duration, key risks/dependencies.
 
 8. ESTIMATED TRANSPORT TIMELINE
-   - Realistic timeline including hospital clearance, transfer to airport, flight, arrival protocol
+   - Realistic timeline including: escort travel to patient location, hospital clearance, transfer to airport, the repatriation flight, arrival protocol, AND escort return trip. Provide total elapsed time for the escort.
 
 Use clear section headers. Be direct — do not hedge unnecessarily. Flag CRITICAL issues prominently.`;
 
@@ -2649,11 +2695,16 @@ PATIENT CLINICAL PROFILE:
 - Infectious/isolation: ${c.infect}
 - SpO₂: ${c.spo2||'—'} | BP: ${c.bp||'—'} | GCS: ${c.gcs||'—'}
 - Clinical summary: ${c.clinicalSummary||'not provided'}
-- Special requirements: ${c.special||'none'}` : 'No specific patient loaded — provide general medical repatriation guidance.';
+- Special requirements: ${c.special||'none'}
+
+MEDICAL ESCORT TRAVEL:
+- Escort: ${c.escortName||'TBD'}
+- Escort origin: ${c.escortOriginCity||'unknown'} (${c.escortOriginIata||'?'})
+- Escort destination after mission: ${c.escortDestCity||'unknown'} (${c.escortDestIata||'?'})` : 'No specific patient loaded — provide general medical repatriation guidance.';
 
   const prompt = `You are a senior medical repatriation coordinator at HealthWatch Assistance, Thessaloniki, Greece.
 
-ROUTE REQUEST:
+ROUTE REQUEST (PATIENT REPATRIATION LEG):
 - Origin airport: ${origin}
 - Destination airport: ${dest}
 - Departure date: ${date || 'as soon as medically cleared'}
@@ -2661,43 +2712,53 @@ ROUTE REQUEST:
 - Passengers: ${pax}
 ${clinicalContext}
 
-Provide a complete, practical flight planning analysis. Structure your response with these exact sections:
+You MUST plan the COMPLETE three-leg journey, not just the patient leg. Structure your response with these exact sections:
 
-## ROUTE ANALYSIS
-Brief assessment of the route (distance, typical duration, available connections).
+## ROUTE ANALYSIS — FULL ITINERARY
+Summarise the three legs:
+- Leg A (escort outbound): ${c?.escortOriginIata||'escort origin'} → ${origin}
+- Leg B (patient repatriation, escort accompanies): ${origin} → ${dest}
+- Leg C (escort return): ${dest} → ${c?.escortDestIata||'escort destination'}
+For each leg give distance, typical duration, and connection options.
 
-## RECOMMENDED AIRLINES
-List the 3-5 best airlines for this specific route with:
-- Airline name and IATA code
-- Why it's recommended for medical cases (MEDA experience, stretcher availability, medical equipment policy)
-- Best connecting hub if applicable
-- Estimated flight time
+## RECOMMENDED AIRLINES — PER LEG
+For EACH of the three legs above list the 3 best carriers with:
+- Airline name + IATA code
+- Why it fits this leg (Leg B needs MEDA/stretcher capability; Legs A & C optimise cost, schedule alignment with handover)
+- Best connecting hub and flight time
 
-## MEDICAL SUITABILITY ASSESSMENT
-Based on the clinical profile:
+## MEDICAL SUITABILITY ASSESSMENT (Leg B)
 - Fitness for commercial flight: YES / CONDITIONAL / NO — with reason
 - Recommended cabin class and seating
 - Required SSR codes (MEDA, STCR, WCHR, OXYG, WCHS, etc.)
 - In-flight medical requirements
 - Layover considerations
 
+## ESCORT SCHEDULING (Legs A & C)
+- Earliest arrival required at patient origin (give buffer hours before patient pickup)
+- Recommended overnight / hotel needs at patient origin or destination
+- Earliest realistic return flight after delivering patient to receiving hospital
+- Total mission elapsed time for the escort (door-to-door)
+
 ## BOOKING INSTRUCTIONS FOR MEDA CASES
 Step-by-step how to book this as a medical case:
-1. Which airline medical desk to contact
+1. Which airline medical desk to contact (Leg B)
 2. What documents to submit (MEDIF, fitness to fly, etc.)
 3. Typical lead time required
-4. Cost estimate range in EUR
+4. Cost estimate range in EUR — itemised: Leg A escort, Leg B patient+escort, Leg C escort return, total
 
 ## DIRECT SEARCH LINKS
 Provide these exact links for checking live availability:
-- Google Flights: https://www.google.com/flights (with note to search ${origin}→${dest} on ${date||'target date'})
-- Specific airline websites for the top 2–3 recommended carriers
+- Google Flights for Leg A: https://www.google.com/flights (search ${c?.escortOriginIata||'escort origin'}→${origin})
+- Google Flights for Leg B: https://www.google.com/flights (search ${origin}→${dest} on ${date||'target date'})
+- Google Flights for Leg C: https://www.google.com/flights (search ${dest}→${c?.escortDestIata||'escort destination'})
+- Specific airline websites for the top recommended carriers
 
 ## AIR AMBULANCE ALTERNATIVE
-If commercial is unsuitable or as backup:
+If commercial is unsuitable for Leg B or as backup:
 - Recommended air ambulance operators for this route
 - Typical cost range
-- Contact approach
+- Note that escort travel still requires Legs A and C separately
 
 Be specific, practical and concise. Use your medical transport expertise.`;
 
