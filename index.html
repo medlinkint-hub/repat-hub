@@ -704,6 +704,62 @@ input.ie-filled, select.ie-filled, textarea.ie-filled {
 </head>
 <body>
 
+<!-- LOCK SCREEN -->
+<div id="lock-screen" style="position:fixed;inset:0;z-index:99999;background:linear-gradient(135deg,#0c1f3f 0%,#1a3a6e 100%);display:flex;align-items:center;justify-content:center;font-family:'Inter',sans-serif">
+  <div style="background:#fff;border-radius:14px;padding:40px 44px;box-shadow:0 30px 80px rgba(0,0,0,0.35);width:min(420px,92vw);text-align:center">
+    <div style="display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:8px">
+      <div style="width:46px;height:46px;border-radius:10px;background:linear-gradient(135deg,#c0392b 0%,#8e2419 100%);display:flex;align-items:center;justify-content:center;color:#fff;font-size:22px;font-weight:700">H</div>
+      <div style="text-align:left">
+        <div style="font-size:18px;font-weight:700;color:#0c1f3f;letter-spacing:0.3px">HealthWatch</div>
+        <div style="font-size:11px;color:#6b7c93;letter-spacing:0.5px;text-transform:uppercase">Repatriation Hub</div>
+      </div>
+    </div>
+    <div style="font-size:13px;color:#6b7c93;margin:14px 0 22px">Enter access password to continue</div>
+    <input type="password" id="lock-pw" placeholder="Password" autocomplete="off"
+           style="width:100%;padding:13px 16px;font-size:15px;border:1.5px solid #d6deea;border-radius:8px;outline:none;font-family:inherit;letter-spacing:1px;text-align:center"
+           onkeydown="if(event.key==='Enter')submitLock()" />
+    <div id="lock-err" style="display:none;font-size:12px;color:#c0392b;margin-top:10px;font-weight:600">✕ Incorrect password</div>
+    <button onclick="submitLock()"
+            style="width:100%;margin-top:18px;padding:13px;font-size:14px;font-weight:600;background:#0c1f3f;color:#fff;border:none;border-radius:8px;cursor:pointer;letter-spacing:0.4px">
+      Unlock
+    </button>
+    <div style="font-size:10px;color:#9aa7ba;margin-top:18px;letter-spacing:0.4px">HealthWatch Assistance S.A. · Thessaloniki, Greece</div>
+  </div>
+</div>
+
+<script>
+  // Access gate. Note: client-side only — not real authentication.
+  (function() {
+    const PW = 'hwa2026';
+    const KEY = 'hwa_unlocked';
+    const screen = document.getElementById('lock-screen');
+
+    window.lockNow = function() {
+      sessionStorage.removeItem(KEY);
+      localStorage.removeItem(KEY);
+      location.reload();
+    };
+    window.submitLock = function() {
+      const val = document.getElementById('lock-pw').value;
+      if (val === PW) {
+        sessionStorage.setItem(KEY, '1');
+        screen.remove();
+      } else {
+        const err = document.getElementById('lock-err');
+        err.style.display = 'block';
+        document.getElementById('lock-pw').value = '';
+        document.getElementById('lock-pw').focus();
+      }
+    };
+
+    if (sessionStorage.getItem(KEY) === '1' || localStorage.getItem(KEY) === '1') {
+      screen.remove();
+      return;
+    }
+    setTimeout(() => { const i = document.getElementById('lock-pw'); if (i) i.focus(); }, 50);
+  })();
+</script>
+
 <!-- TOPBAR -->
 <div class="topbar">
   <div class="hamburger" onclick="toggleSidebar()" id="hamburger">
@@ -732,6 +788,10 @@ input.ie-filled, select.ie-filled, textarea.ie-filled {
     <button class="topbar-new-btn" onclick="navTo('new-case')">
       <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       New Case
+    </button>
+    <button onclick="lockNow()" title="Lock session"
+            style="margin-left:8px;background:transparent;border:1px solid rgba(255,255,255,0.18);color:rgba(255,255,255,0.75);padding:7px 11px;border-radius:6px;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:5px">
+      🔒 Lock
     </button>
   </div>
 </div>
