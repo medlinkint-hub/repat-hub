@@ -2165,6 +2165,7 @@ The AI will provide:
     <div class="rr-no-print" style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap;border-top:1px solid var(--border);padding-top:16px">
       <button class="btn btn-ghost btn-sm" onclick="saveMedifDraft()">💾 Save draft</button>
       <button class="btn btn-primary btn-sm" onclick="generateMedifPdf()" id="medif-gen-btn">📄 Generate PDF</button>
+      <button class="btn btn-ghost btn-sm" onclick="inspectAirlineTemplate(currentMedifAirlineKey)" title="Show the field names from the official PDF (after upload)">🔍 Inspect template</button>
       <button class="btn btn-ghost btn-sm" onclick="emailMedifToAirline()">📨 Email to airline</button>
       <button class="btn btn-ghost btn-sm" onclick="closeMedif()" style="margin-left:auto">Close</button>
     </div>
@@ -2449,6 +2450,7 @@ Avg flow: 3 L/min"></textarea>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 
 <script>
 // ══════════════════════════════════════════════════════════════════
@@ -3096,45 +3098,153 @@ async function saveMedifDraft() {
   await persistCase(c);
   toast('MEDIF draft saved.', 'success');
 }
+// ─── Official airline PDF filling via pdf-lib ───
+// Per-airline mapping from PDF AcroForm field name → function(formData, caseObj) → value.
+// Populated as the official PDFs are uploaded into medif-templates/<key>.pdf
+// and their field names inspected (use the 🔍 Inspect button to discover them).
+const MEDIF_FIELD_MAPS = {
+  aegean:    {},
+  lufthansa: {},
+  swiss:     {},
+  austrian:  {},
+  airfrance: {},
+  klm:       {},
+  ba:        {},
+  ita:       {},
+  turkish:   {},
+  pegasus:   {},
+  ryanair:   {},
+  easyjet:   {},
+  wizz:      {}
+};
+
+async function fetchOfficialMedifTemplate(airlineKey) {
+  // Live in the repo at ./medif-templates/<key>.pdf — same-origin, no CORS.
+  try {
+    const res = await fetch(`./medif-templates/${airlineKey}.pdf`, { cache: 'no-store' });
+    if (!res.ok) return null;
+    const buf = await res.arrayBuffer();
+    if (buf.byteLength < 1024) return null; // probably the GitHub 404 page
+    return buf;
+  } catch { return null; }
+}
+
+async function fillOfficialMedifPdf(airlineKey, formData, caseObj) {
+  if (typeof PDFLib === 'undefined') return { ok:false, reason:'pdf-lib not loaded' };
+  const bytes = await fetchOfficialMedifTemplate(airlineKey);
+  if (!bytes) return { ok:false, reason:'no template' };
+  const { PDFDocument } = PDFLib;
+  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const form = doc.getForm();
+  const fields = form.getFields();
+  const fieldNames = fields.map(f => f.getName());
+  const map = MEDIF_FIELD_MAPS[airlineKey] || {};
+  let filled = 0;
+  for (const f of fields) {
+    const name = f.getName();
+    const valueFn = map[name];
+    if (typeof valueFn !== 'function') continue;
+    let value;
+    try { value = valueFn(formData, caseObj); } catch { continue; }
+    if (value == null || value === '') continue;
+    try {
+      const type = f.constructor.name;
+      if (type === 'PDFTextField')       f.setText(String(value));
+      else if (type === 'PDFCheckBox')   { if (String(value).match(/^(y|yes|true|1|on)$/i)) f.check(); else f.uncheck(); }
+      else if (type === 'PDFDropdown')   f.select(String(value));
+      else if (type === 'PDFRadioGroup') f.select(String(value));
+      filled++;
+    } catch(e) { console.warn('Could not fill', name, e); }
+  }
+  // Keep the form editable rather than flattening — the physician will sign.
+  const out = await doc.save();
+  return { ok:true, blob: new Blob([out], { type:'application/pdf' }), filled, total: fieldNames.length, fieldNames };
+}
+
+// Inspect: download the template, list its AcroForm field names so the user can
+// share them and I can write the case→PDF mapping for that airline.
+async function inspectAirlineTemplate(airlineKey) {
+  if (typeof PDFLib === 'undefined') { toast('PDF library still loading.', 'error'); return; }
+  const bytes = await fetchOfficialMedifTemplate(airlineKey);
+  if (!bytes) {
+    toast(`No template yet for ${airlineKey}. Upload it to medif-templates/${airlineKey}.pdf in the repo.`, 'info');
+    return;
+  }
+  try {
+    const doc = await PDFLib.PDFDocument.load(bytes, { ignoreEncryption: true });
+    const fields = doc.getForm().getFields();
+    if (!fields.length) {
+      toast(`Template loaded but it is FLAT (no fillable form). It will need an overlay approach — tell me to do that next.`, 'info');
+      return;
+    }
+    const names = fields.map(f => `${f.constructor.name.replace('PDF','')}  ·  ${f.getName()}`).join('\n');
+    const text = `Template: ${airlineKey}.pdf — ${fields.length} field(s) found.\n\nShare this list with me so I can write the field mapping:\n\n${names}`;
+    document.getElementById('doc-viewer-title').textContent = `🔍 ${airlineKey}.pdf — AcroForm field inspection`;
+    document.getElementById('doc-viewer-body').textContent  = text;
+    document.getElementById('doc-viewer-modal').dataset.caseId = '';
+    document.getElementById('doc-viewer-modal').dataset.idx    = '';
+    document.getElementById('doc-viewer-modal').style.display  = 'flex';
+  } catch(e) {
+    toast('Could not parse the PDF: ' + e.message, 'error');
+  }
+}
+
 async function generateMedifPdf() {
   if (!currentMedifCaseId || !currentMedifAirlineKey) return;
-  if (typeof html2pdf === 'undefined') { toast('PDF library still loading — try again in a second.', 'error'); return; }
-  await saveMedifDraft();  // persist before exporting
+  await saveMedifDraft();
   const btn = document.getElementById('medif-gen-btn');
   btn.disabled = true; const old = btn.textContent; btn.textContent = 'Generating…';
   try {
     const c = cases.find(x => x.id === currentMedifCaseId);
     const a = AIRLINE_REGISTRY[currentMedifAirlineKey];
-    const el = document.getElementById('medif-printable');
+    const formData = collectMedifFormData();
     const filename = `MEDIF_${a.code}_${c.id}_${new Date().toISOString().slice(0,10)}.pdf`;
-    // Render to PDF as a Blob so we can both download it and save it as an attachment.
-    const pdfBlob = await html2pdf().set({
-      margin: [10, 10, 14, 10],
-      filename,
-      image: { type: 'jpeg', quality: 0.95 },
-      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-      pagebreak: { mode: ['css','legacy'] }
-    }).from(el).outputPdf('blob');
+    let pdfBlob, source;
+    // 1. Prefer the official airline template if uploaded + field map exists
+    const official = await fillOfficialMedifPdf(currentMedifAirlineKey, formData, c);
+    if (official.ok && official.filled > 0) {
+      pdfBlob = official.blob;
+      source = `official ${a.name} PDF — ${official.filled}/${official.total} fields filled`;
+    } else if (official.ok) {
+      // Template uploaded but no field map yet → still fall back to HTML
+      pdfBlob = await renderMedifFromHtml(filename);
+      source = `branded HWA PDF (official ${a.name} template exists but field map not written yet — ask me to add it)`;
+    } else {
+      pdfBlob = await renderMedifFromHtml(filename);
+      source = `branded HWA PDF (no official ${a.name} template uploaded — upload it to medif-templates/${currentMedifAirlineKey}.pdf for identical output)`;
+    }
 
     // Download
-    const a1 = document.createElement('a');
-    a1.href = URL.createObjectURL(pdfBlob);
-    a1.download = filename;
-    a1.click();
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(pdfBlob);
+    link.download = filename;
+    link.click();
 
-    // Save as attachment (category "Generated MEDIF") so it persists on the case.
+    // Save as attachment (Generated MEDIF) so it persists on the case.
     if (pdfBlob.size <= ATTACHMENT_MAX_BYTES) {
       const file = new File([pdfBlob], filename, { type:'application/pdf' });
       await uploadAttachment(c.id, file, 'Generated MEDIF');
     } else {
-      toast(`PDF (${formatSize(pdfBlob.size)}) too large to auto-attach. Downloaded only.`, 'info');
+      toast(`PDF (${formatSize(pdfBlob.size)}) too large to auto-attach.`, 'info');
     }
-    toast('MEDIF PDF generated & saved to case.', 'success');
+    toast('MEDIF generated · ' + source, 'success');
   } catch(e) {
     console.error(e); toast('PDF generation failed: ' + e.message, 'error');
   }
   btn.disabled = false; btn.textContent = old;
+}
+
+async function renderMedifFromHtml(filename) {
+  if (typeof html2pdf === 'undefined') throw new Error('html2pdf library not loaded');
+  const el = document.getElementById('medif-printable');
+  return await html2pdf().set({
+    margin: [10, 10, 14, 10],
+    filename,
+    image: { type: 'jpeg', quality: 0.95 },
+    html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+    pagebreak: { mode: ['css','legacy'] }
+  }).from(el).outputPdf('blob');
 }
 function emailMedifToAirline() {
   if (!currentMedifAirlineKey) return;
