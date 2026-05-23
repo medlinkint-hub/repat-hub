@@ -4601,10 +4601,18 @@ async function deleteAttachment(attachmentId) {
 }
 
 // Re-render the open case modal after any change that modifies the underlying case.
+// Preserves the modal-box scrollTop so the user doesn't bounce back to the top.
 function refreshCaseModalIfOpen() {
   const modal = document.getElementById('case-modal');
-  if (modal && modal.style.display === 'flex' && currentModalCaseId) {
-    openCaseModal(currentModalCaseId);
+  if (!modal || modal.style.display !== 'flex' || !currentModalCaseId) return;
+  const box = modal.querySelector('.modal-box');
+  const scrollTop = box ? box.scrollTop : 0;
+  openCaseModal(currentModalCaseId);
+  if (scrollTop) {
+    requestAnimationFrame(() => {
+      const newBox = document.querySelector('#case-modal .modal-box');
+      if (newBox) newBox.scrollTop = scrollTop;
+    });
   }
 }
 
@@ -4618,7 +4626,7 @@ function renderNotesBlock(c) {
     </div>
   `).join('');
   return `
-    <div style="margin-top:18px">
+    <div id="notes-block-${c.id}" style="margin-top:18px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;font-weight:600">📝 Notes (${notes.length}${notes.length > 3 ? ' · showing last 3' : ''})</div>
       </div>
@@ -4626,28 +4634,48 @@ function renderNotesBlock(c) {
         <textarea id="case-note-input-${c.id}" rows="2" placeholder="Add a note — phone update, new symptom, insurer decision, etc."
                   style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:7px 9px;font-size:12px;color:var(--text);font-family:inherit;resize:vertical"></textarea>
         <div style="display:flex;gap:6px;justify-content:flex-end">
-          <button class="btn btn-primary btn-sm" onclick="addNoteInline('${c.id}')">+ Add note</button>
+          <button class="btn btn-primary btn-sm" id="case-note-btn-${c.id}" onclick="addNoteInline('${c.id}')">+ Add note</button>
         </div>
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">${rows || '<div style="font-size:12px;color:var(--text-faint);font-style:italic;padding:6px 2px">No notes yet.</div>'}</div>
     </div>
   `;
 }
+// Surgically refresh only the Notes block so we don't reset modal scroll
+// or dismiss the on-screen keyboard the way a full modal re-render does.
+function refreshNotesBlock(caseId) {
+  const wrap = document.getElementById(`notes-block-${caseId}`);
+  if (!wrap) return;
+  const c = cases.find(x => x.id === caseId);
+  if (c) wrap.outerHTML = renderNotesBlock(c);
+}
 async function addNoteInline(caseId) {
-  const ta = document.getElementById(`case-note-input-${caseId}`);
-  const text = ta?.value?.trim();
+  const ta  = document.getElementById(`case-note-input-${caseId}`);
+  const btn = document.getElementById(`case-note-btn-${caseId}`);
+  const text = (ta?.value || '').trim();
   if (!text) { toast('Type a note first.', 'error'); return; }
-  await addCaseNote(caseId, text);
-  if (ta) ta.value = '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  try {
+    await addCaseNote(caseId, text);
+    refreshNotesBlock(caseId);
+    // Bring the freshly-rendered block into view so the user actually sees the new note.
+    requestAnimationFrame(() => {
+      const wrap = document.getElementById(`notes-block-${caseId}`);
+      if (wrap && wrap.scrollIntoView) wrap.scrollIntoView({ block:'center', behavior:'smooth' });
+    });
+  } catch(e) {
+    toast('Could not save note: ' + e.message, 'error');
+    if (btn) { btn.disabled = false; btn.textContent = '+ Add note'; }
+  }
 }
 // Kept for any older onclick references that still call the old function.
 async function addNoteFromCaseModal(caseId) {
-  // Fallback to inline textarea if it exists on screen, else prompt.
   const ta = document.getElementById(`case-note-input-${caseId}`);
   if (ta) { ta.focus(); return; }
   const text = prompt('Add a note (what just happened on the case):');
   if (!text) return;
   await addCaseNote(caseId, text.trim());
+  refreshNotesBlock(caseId);
 }
 
 function renderSavedDocsBlock(c) {
@@ -4943,6 +4971,7 @@ async function addCaseNoteFromEval() {
   await addCaseNote(caseId, txt);
   if (ta) ta.value = '';
   loadCaseForEval(caseId);
+  refreshNotesBlock(caseId);  // updates the case modal too if it's open underneath
 }
 async function addCaseNote(caseId, text) {
   const c = cases.find(x => x.id === caseId); if (!c) return;
@@ -4950,7 +4979,8 @@ async function addCaseNote(caseId, text) {
   c.notes.push({ text, at: new Date().toISOString(), by: 'coordinator' });
   await persistCase(c);
   toast('Note added.', 'success');
-  refreshCaseModalIfOpen();
+  // Callers do their own targeted refresh so we avoid the full modal re-render
+  // (which on mobile dismisses the keyboard and resets the modal scroll).
 }
 async function deleteCaseNote(caseId, idx) {
   const c = cases.find(x => x.id === caseId); if (!c?.notes?.[idx]) return;
