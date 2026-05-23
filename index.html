@@ -1408,6 +1408,22 @@ input.ie-filled, select.ie-filled, textarea.ie-filled {
           </div>
         </div>
 
+        <div class="card" style="margin-bottom:20px">
+          <div class="card-header">
+            <h3>📝 Notes & new information</h3>
+            <span style="font-size:11px;color:var(--text-dim)" id="eval-notes-count">0 notes</span>
+          </div>
+          <div style="font-size:12px;color:var(--text-dim);margin-bottom:10px;line-height:1.5">
+            Add anything you've just learned — phone updates from the hospital, insurer decisions, new symptoms, family preferences. Notes flow into the next AI evaluation <em>and</em> Claude will suggest case-field updates if your note contains structured info (e.g. "MEDIF approved by Aegean medical desk").
+          </div>
+          <textarea id="eval-note-input" rows="3" placeholder="e.g. Spoke with treating MD — patient agitated this morning, started haloperidol 2.5mg IM. Family confirmed UK arrival pickup. Insurer approved €4,500 budget."></textarea>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <button class="btn btn-primary btn-sm" onclick="addCaseNoteFromEval()">＋ Add note</button>
+            <button class="btn btn-ghost btn-sm" onclick="runAIEval()">⬡ Re-evaluate with notes</button>
+          </div>
+          <div id="eval-notes-list" style="margin-top:12px;display:flex;flex-direction:column;gap:6px;max-height:240px;overflow-y:auto"></div>
+        </div>
+
         <div class="card">
           <div class="card-header">
             <h3 data-i18n="transport_mode">Transport Mode Selection</h3>
@@ -1465,6 +1481,11 @@ The AI will assess:
 • Airline fitness-to-fly determination
 • Risk flags and contraindications
 • Step-by-step repatriation plan
+          </div>
+          <div id="eval-action-bar" style="display:none;gap:8px;padding:10px 14px;background:rgba(0,0,0,0.15);border-top:1px solid rgba(255,255,255,0.08);flex-wrap:wrap;align-items:center">
+            <button class="btn btn-primary btn-sm" id="eval-add-tasks-btn"   onclick="importAiActionsAsTasks()">↪ Add to checklist</button>
+            <button class="btn btn-ghost   btn-sm" id="eval-apply-updates-btn" onclick="applyAiUpdatesToCase()">↪ Apply case updates</button>
+            <div style="font-size:10px;color:rgba(255,255,255,0.55);margin-left:auto">Updates skip fields that already have a value.</div>
           </div>
         </div>
 
@@ -4199,6 +4220,7 @@ function openCaseModal(id) {
     ${renderRepatriationDetailsBlock(c)}
     ${clinicalDecisionSupport(c)}
     ${renderTasksBlock(c)}
+    ${renderNotesBlock(c)}
     ${renderHotelsBlock(c)}
     ${renderAttachmentsBlock(c)}
     ${renderSavedDocsBlock(c)}
@@ -4586,6 +4608,31 @@ function refreshCaseModalIfOpen() {
   }
 }
 
+function renderNotesBlock(c) {
+  const notes = Array.isArray(c.notes) ? c.notes : [];
+  const recent = notes.slice(-3).reverse();
+  const rows = recent.map(n => `
+    <div style="padding:8px 11px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px">
+      <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.4px">${new Date(n.at).toLocaleString()}${n.by ? ' · ' + escHtml(n.by) : ''}</div>
+      <div style="font-size:12px;color:var(--text);margin-top:3px;white-space:pre-wrap">${escHtml(n.text)}</div>
+    </div>
+  `).join('');
+  return `
+    <div style="margin-top:18px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;font-weight:600">📝 Notes (${notes.length}${notes.length > 3 ? ' · showing last 3' : ''})</div>
+        <button class="btn btn-ghost btn-sm" onclick="addNoteFromCaseModal('${c.id}')">+ Add note</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">${rows || '<div style="font-size:12px;color:var(--text-faint);font-style:italic;padding:6px 2px">No notes yet. Add observations from phone calls, hospital updates, insurer decisions…</div>'}</div>
+    </div>
+  `;
+}
+async function addNoteFromCaseModal(caseId) {
+  const text = prompt('Add a note (what just happened on the case):');
+  if (!text) return;
+  await addCaseNote(caseId, text.trim());
+}
+
 function renderSavedDocsBlock(c) {
   const docs = Array.isArray(c.documents) ? c.documents : [];
   const hasReport = !!c.repatReport;
@@ -4828,97 +4875,206 @@ function loadCaseForEval(id) {
   currentEvalCaseId = id;
   const c = cases.find(x => x.id === id);
   if (!c) return;
-  const summary = buildClinicalSummary(c);
-  document.getElementById('eval-manual-input').value = summary;
+  document.getElementById('eval-manual-input').value = buildFullCaseContext(c);
+  renderEvalNotes();
+}
+function renderEvalNotes() {
+  const list = document.getElementById('eval-notes-list');
+  const counter = document.getElementById('eval-notes-count');
+  if (!list || !counter) return;
+  const c = cases.find(x => x.id === currentEvalCaseId);
+  const notes = c?.notes || [];
+  counter.textContent = `${notes.length} note${notes.length === 1 ? '' : 's'}`;
+  if (!notes.length) {
+    list.innerHTML = '<div style="font-size:11px;color:var(--text-faint);font-style:italic;padding:6px 2px">No notes yet for this case.</div>';
+    return;
+  }
+  list.innerHTML = notes.slice().reverse().map((n, revIdx) => {
+    const idx = notes.length - 1 - revIdx;
+    return `
+      <div style="padding:8px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+          <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.4px">${new Date(n.at).toLocaleString()}${n.by ? ' · ' + escHtml(n.by) : ''}</div>
+          <button class="btn btn-danger btn-sm" onclick="deleteCaseNote('${c.id}',${idx})" style="padding:2px 7px;font-size:10px">✕</button>
+        </div>
+        <div style="font-size:12px;color:var(--text);margin-top:3px;white-space:pre-wrap">${escHtml(n.text)}</div>
+      </div>
+    `;
+  }).join('');
+}
+async function addCaseNoteFromEval() {
+  if (!currentEvalCaseId) { toast('Pick a case first.', 'error'); return; }
+  const txt = document.getElementById('eval-note-input').value.trim();
+  if (!txt) return;
+  await addCaseNote(currentEvalCaseId, txt);
+  document.getElementById('eval-note-input').value = '';
+  // Re-render so the new note is visible AND the manual-input context is refreshed
+  loadCaseForEval(currentEvalCaseId);
+}
+async function addCaseNote(caseId, text) {
+  const c = cases.find(x => x.id === caseId); if (!c) return;
+  if (!Array.isArray(c.notes)) c.notes = [];
+  c.notes.push({ text, at: new Date().toISOString(), by: 'coordinator' });
+  await persistCase(c);
+  toast('Note added.', 'success');
+  refreshCaseModalIfOpen();
+}
+async function deleteCaseNote(caseId, idx) {
+  const c = cases.find(x => x.id === caseId); if (!c?.notes?.[idx]) return;
+  if (!confirm('Delete this note?')) return;
+  c.notes.splice(idx, 1);
+  await persistCase(c);
+  renderEvalNotes();
+  refreshCaseModalIfOpen();
 }
 
 function buildClinicalSummary(c) {
-  return `Case ID: ${c.id}
-Patient: ${c.firstname} ${c.lastname}, ${c.nationality||'unknown nationality'}
-DOB: ${c.dob||'unknown'}
-Insurer: ${c.insurer||'unknown'} | Policy: ${c.policy||'unknown'}
-
-DIAGNOSIS: ${c.diagnosis||'unknown'} (ICD-10: ${c.icd||'unknown'})
-CLINICAL SUMMARY: ${c.clinicalSummary||'Not provided'}
-
-VITALS: BP ${c.bp||'—'} | HR ${c.hr||'—'} | SpO₂ ${c.spo2||'—'} | Temp ${c.temp||'—'} | GCS ${c.gcs||'—'} | RR ${c.rr||'—'}
-
-CLINICAL FLAGS:
-- Mobility: ${c.mobility}
-- Oxygen requirement: ${c.o2}
-- Psychiatric risk: ${c.psych}
-- Infectious / isolation: ${c.infect}
-
-LOGISTICS:
-- Patient origin: ${c.originCity||'unknown'}, ${c.originCountry||'unknown'} (Airport: ${c.originIata||'unknown'})
-- Patient destination: ${c.destCity||'unknown'}, ${c.destCountry||'unknown'} (Airport: ${c.destIata||'unknown'})
-- Receiving hospital: ${c.destHosp||'unknown'}
-- Earliest departure: ${c.departDate||'ASAP'}
-- Special requirements: ${c.special||'None'}
-
-MEDICAL ESCORT TRAVEL (plan ALL three legs):
-- Escort: ${c.escortName||'TBD'}
-- Leg A — Escort outbound: ${c.escortOriginCity||'unknown'} (${c.escortOriginIata||'?'}) → ${c.originCity||'patient origin'} (${c.originIata||'?'})
-- Leg B — Patient repatriation (escort accompanies): ${c.originCity||'patient origin'} (${c.originIata||'?'}) → ${c.destCity||'patient destination'} (${c.destIata||'?'})
-- Leg C — Escort return: ${c.destCity||'patient destination'} (${c.destIata||'?'}) → ${c.escortDestCity||'escort home'} (${c.escortDestIata||'?'})
-${c.flightLegs && c.flightLegs.length ? `
-FLIGHT ITINERARY (${c.flightLegs.length} leg${c.flightLegs.length>1?'s':''}):
-${c.flightLegs.map((l,i) => {
-  const icon = {air:'✈',ground:'🚑',airAmb:'🚁'}[l.type]||'✈';
-  return `  Leg ${i+1} ${icon}: ${l.fromCity||'?'} (${l.fromIata||'?'}) → ${l.toCity||'?'} (${l.toIata||'?'}) | ${l.date||'TBD'} ${l.depTime||''}-${l.arrTime||''} | ${l.airline||'TBD'} ${l.flightNo||''} | ${l.cabin||''} | Notes: ${l.notes||'none'}`;
-}).join('\n')}` : '- No flight legs planned yet'}`;
+  // Backwards-compat wrapper — older callers want a short clinical summary.
+  return buildFullCaseContext(c);
 }
 
+// Comprehensive case context — every section of the record we have, in markdown
+// for Claude. Used by the AI Evaluation so its next-steps reflect actual state.
+function buildFullCaseContext(c) {
+  if (!c) return '';
+  const pick = (label, val) => val ? `${label}: ${val}` : '';
+  const lines = [];
+  lines.push(`# Case ${c.id} · ${c.firstname||'?'} ${c.lastname||'?'}`);
+  lines.push(`Status: ${c.status||'new'} · Created ${c.createdAt ? new Date(c.createdAt).toLocaleDateString() : '?'}`);
+  lines.push('');
+  lines.push('## Patient');
+  [pick('DOB', c.dob), pick('Gender', c.gender), pick('Nationality', c.nationality),
+   pick('Passport', c.passport), pick('Insurer', c.insurer), pick('Policy', c.policy),
+   pick('Insurer case #', c.insurerCaseNo), pick('Emergency contact', c.contact),
+   pick('Next of kin', c.familyName ? `${c.familyName} (${c.familyPhone||'no phone'})` : '')
+  ].filter(Boolean).forEach(l => lines.push('- ' + l));
+  lines.push('');
+  lines.push('## Medical');
+  [pick('Diagnosis', c.diagnosis), pick('ICD-10', c.icd),
+   pick('Admitted', c.admissionDate), pick('Discharged', c.dischargeDate),
+   pick('Medications', c.medications), pick('Allergies', c.allergies),
+   c.clinicalSummary ? `Clinical summary: ${c.clinicalSummary}` : ''
+  ].filter(Boolean).forEach(l => lines.push('- ' + l));
+  lines.push('');
+  lines.push('## Vitals (intake)');
+  lines.push(`- BP ${c.bp||'?'} · HR ${c.hr||'?'} · SpO₂ ${c.spo2||'?'} · Temp ${c.temp||'?'} · RR ${c.rr||'?'} · GCS ${c.gcs||'?'}`);
+  lines.push('');
+  lines.push('## Flags');
+  lines.push(`- Mobility: ${c.mobility||'?'} · O₂: ${c.o2||'?'}${c.o2FlowRate ? ' ('+c.o2FlowRate+')' : ''} · Wheelchair: ${c.wheelchairCode||'—'}`);
+  lines.push(`- Psychiatric: ${c.psych||'?'} · Isolation: ${c.infect||'?'} · Escort required: ${c.escortRequired||'?'}`);
+  lines.push('');
+  lines.push('## Logistics & flight');
+  [pick('Current hospital', c.currentHosp ? `${c.currentHosp} (${c.hospitalPhone||'no phone'})` : ''),
+   pick('Treating MD', c.treatingDoctor ? `${c.treatingDoctor} (${c.treatingDoctorPhone||'no phone'})` : ''),
+   pick('Origin', `${c.originCity||'?'}, ${c.originCountry||'?'} (${c.originIata||'?'})`),
+   pick('Destination', `${c.destCity||'?'}, ${c.destCountry||'?'} (${c.destIata||'?'})`),
+   pick('Receiving hospital', c.destHosp ? `${c.destHosp} (${c.destHospPhone||'no phone'})` : ''),
+   pick('Flight (out)', c.flightOutNumber ? `${c.flightOutAirline||''} ${c.flightOutNumber} on ${c.flightOutDate||'?'} ${c.flightOutTime||''} · ${c.flightOutCabin||''}` : ''),
+   pick('Return flight', c.flightRetNumber ? `${c.flightRetNumber} on ${c.flightRetDate||''}` : ''),
+   pick('PNR', c.pnr), pick('Ticket', c.ticketNumber),
+   pick('Requested repat date', c.requestedRepatDate)
+  ].filter(Boolean).forEach(l => lines.push('- ' + l));
+  if (Array.isArray(c.hotels) && c.hotels.length) {
+    lines.push('');
+    lines.push('## Hotels');
+    c.hotels.forEach(h => lines.push(`- [${h.for}] ${h.name||'?'} · ${h.checkin||'?'} → ${h.checkout||'?'} · ${h.cost ? (h.currency||'€')+h.cost : 'cost ?'}`));
+  }
+  if (Array.isArray(c.tasks) && c.tasks.length) {
+    lines.push('');
+    lines.push('## Tasks');
+    c.tasks.forEach(t => lines.push(`- ${t.done?'[x]':'[ ]'} ${t.title}${t.due ? ' (due '+t.due+')' : ''}`));
+  }
+  if (Array.isArray(c.attachments) && c.attachments.length) {
+    lines.push('');
+    lines.push('## Attachments (file metadata only)');
+    c.attachments.forEach(a => lines.push(`- ${a.category||'Other'}: ${a.name} (${formatSize(a.size||0)})`));
+  }
+  if (Array.isArray(c.documents) && c.documents.length) {
+    lines.push('');
+    lines.push('## Generated documents');
+    c.documents.forEach(d => lines.push(`- ${d.type}${d.airline ? ' ('+d.airline+')' : ''} — ${new Date(d.generatedAt).toLocaleDateString()}`));
+  }
+  if (c.preflight) {
+    const fitLabel = {fit:'FIT', conditions:'FIT WITH CONDITIONS', unfit:'UNFIT'}[c.preflight.fitness] || '?';
+    lines.push('');
+    lines.push('## Pre-flight assessment');
+    lines.push(`- ${c.preflight.date||'?'} ${c.preflight.time||''} by ${c.preflight.escortName||'?'} — **${fitLabel}**`);
+    lines.push(`- Vitals: BP ${c.preflight.bp||'?'} · HR ${c.preflight.hr||'?'} · SpO₂ ${c.preflight.spo2||'?'}% on ${c.preflight.spo2On||'?'}`);
+    if (c.preflight.fitnessSummary) lines.push(`- ${c.preflight.fitnessSummary}`);
+    if (c.preflight.conditions)     lines.push(`- Conditions: ${c.preflight.conditions}`);
+  }
+  if (c.repatReport) {
+    lines.push('');
+    lines.push('## Repatriation report (completed)');
+    lines.push(`- Outcome: ${c.repatReport.outcome||'?'} · Handover: ${c.repatReport.handover||'?'}`);
+    if (c.repatReport.issues) lines.push(`- Issues: ${c.repatReport.issues}`);
+  }
+  const cost = c.repatReport?.cost || {};
+  if (c.hospitalCostEstimate || cost.airE || cost.airA) {
+    lines.push('');
+    lines.push('## Costs');
+    if (c.hospitalCostEstimate) lines.push(`- Hospital estimate: ${c.currency||'EUR'} ${c.hospitalCostEstimate}`);
+    if (cost.airE || cost.airA) lines.push(`- Air est/act: €${cost.airE||'?'} / €${cost.airA||'?'}`);
+  }
+  if (Array.isArray(c.notes) && c.notes.length) {
+    lines.push('');
+    lines.push('## Coordinator notes (chronological)');
+    c.notes.slice(-12).forEach(n => lines.push(`- [${(n.at||'').slice(0,16).replace('T',' ')}${n.by ? ' · '+n.by : ''}] ${n.text}`));
+  }
+  return lines.join('\n');
+}
+
+// Stash the parsed AI response so the "import as tasks" / "apply updates" actions
+// can read from it after rendering.
+let lastEvalActions = [];
+let lastEvalUpdates = {};
+
 async function runAIEval() {
-  const input = document.getElementById('eval-manual-input').value.trim();
-  if (!input) { toast('Please load a case or enter clinical details first.', 'error'); return; }
+  // Always rebuild the input from the current case state so the AI sees the
+  // latest attachments / notes / pre-flight / etc.
+  const c = currentEvalCaseId ? cases.find(x => x.id === currentEvalCaseId) : null;
+  let input;
+  if (c) {
+    input = buildFullCaseContext(c);
+    document.getElementById('eval-manual-input').value = input;
+  } else {
+    input = document.getElementById('eval-manual-input').value.trim();
+    if (!input) { toast('Pick a case or paste a clinical summary first.', 'error'); return; }
+  }
 
   const spinner = document.getElementById('eval-spinner');
   spinner.style.display = 'inline-block';
-  document.getElementById('ai-eval-output').innerHTML = '<div class="ai-thinking">⬡ Analysing clinical profile<div class="dots"><span>.</span><span>.</span><span>.</span></div></div>';
+  document.getElementById('ai-eval-output').innerHTML = '<div class="ai-thinking">⬡ Reading the whole case<div class="dots"><span>.</span><span>.</span><span>.</span></div></div>';
+  document.getElementById('eval-action-bar').style.display = 'none';
 
-  const system = `You are a senior medical transport physician and repatriation coordinator at HealthWatch Assistance (HWA), a leading medical TPA based in Thessaloniki, Greece. 
+  const system = `You are a senior medical transport physician and repatriation coordinator at HealthWatch Assistance (HWA), Thessaloniki, Greece.
 
-Your task is to evaluate the provided clinical case and produce a structured repatriation assessment. Be clinical, precise, and practical.
+The user will provide the FULL state of a repatriation case — patient identification, medical condition, vitals, flags, logistics, flight, contacts, hotels, tasks already done/pending, attachments, generated documents, pre-flight assessment, coordinator notes.
 
-Your evaluation MUST include:
+Your output must be SHORT, SPECIFIC TO THIS CASE, and IMMEDIATELY ACTIONABLE. Do not produce generic textbook content — assume the reader is an experienced coordinator. Tie every recommendation to something concrete from the case state (e.g. "because no MEDIF has been generated for Turkish Airlines yet").
 
-1. FITNESS-TO-FLY DETERMINATION
-   - Clear YES / CONDITIONAL / NO with justification
-   - Minimum stability criteria that must be met before transport
+Output in the following sections, in this exact order, using these exact ALL-CAPS headers (this format is parsed):
 
-2. RECOMMENDED TRANSPORT MODE
-   - Commercial airline (seat) / Commercial with stretcher / Air ambulance / Ground transport
-   - Specific justification based on clinical parameters
+CASE AT A GLANCE
+Two to four lines. Patient, diagnosis in plain words, where they are, where they're going, current case status (e.g. "awaiting MEDIF approval").
 
-3. MEDICAL ESCORT REQUIREMENTS  
-   - Required qualification level (physician / nurse / paramedic / none)
-   - Specific skills required (ACLS, ATLS, ICU experience, psychiatric training, etc.)
+FITNESS TO FLY
+One line: FIT / CONDITIONAL / NOT YET — with the single most important reason.
 
-4. IN-FLIGHT MEDICAL REQUIREMENTS
-   - Oxygen: flow rate and delivery system
-   - Medications to carry (classes, not trade names)
-   - Medical equipment needed (IV, monitor, defibrillator, etc.)
-   - Seating: standard / bulkhead / stretcher / entire row
+MISSING CRITICAL INFORMATION
+Bulleted list. Only items that block forward progress. Use blank-bullet "- " prefix.
 
-5. RISK FLAGS
-   - List any contraindications, risks, or conditions requiring special airline pre-notification
-   - Flag infectious disease protocols if applicable
+KEY RISKS
+Bulleted list, max 5. Each one a specific risk for THIS case (not generic).
 
-6. AIRLINE SPECIAL SERVICE REQUESTS (SSRs)
-   - List required SSR codes (MEDA, STCR, WCHR, WCHS, OXYG, etc.)
+RECOMMENDED NEXT ACTIONS
+A numbered list of 4-7 imperative actions. Each one ≤ 12 words. Concrete and orderable. Example: "Email signed MEDIF to medical@thy.com (THY needs 48h)". Do not repeat actions already completed in TASKS.
 
-7. STEP-BY-STEP REPATRIATION PLAN — FULL ESCORT + PATIENT JOURNEY
-   Plan the COMPLETE itinerary across all three legs:
-   - Leg A (escort outbound): Escort origin airport → Patient origin airport. Recommend carriers, timing relative to patient transfer, hotel/rest needs.
-   - Leg B (patient repatriation, escort accompanying): Patient origin → Patient destination. Carrier, cabin, SSRs, in-flight medical setup.
-   - Leg C (escort return): Patient destination → Escort destination. Earliest realistic return flight, layover considerations, escort handover at receiving hospital before departure.
-   For each leg list: route, recommended carriers, estimated duration, key risks/dependencies.
-
-8. ESTIMATED TRANSPORT TIMELINE
-   - Realistic timeline including: escort travel to patient location, hospital clearance, transfer to airport, the repatriation flight, arrival protocol, AND escort return trip. Provide total elapsed time for the escort.
-
-Use clear section headers. Be direct — do not hedge unnecessarily. Flag CRITICAL issues prominently.`;
+SUGGESTED CASE UPDATES
+If recent coordinator NOTES contain information that should update structured case fields, emit one line per update in the format:
+  key=value
+Use only these keys: diagnosis, icd, mobility, o2, o2FlowRate, escortRequired, infect, psych, treatingDoctor, treatingDoctorPhone, currentHosp, destHosp, flightOutNumber, flightOutDate, flightOutAirline, flightOutCabin, pnr, insurerCaseNo, hospitalCostEstimate, currency, familyName, familyPhone.
+If nothing to update, write "none".`;
 
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -4931,26 +5087,104 @@ Use clear section headers. Be direct — do not hedge unnecessarily. Flag CRITIC
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 1800,
+        max_tokens: 1400,
         system,
-        messages: [{ role:'user', content: `Please evaluate the following repatriation case:\n\n${input}` }]
+        messages: [{ role:'user', content: `Full case state:\n\n${input}` }]
       })
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error.message);
     const text = data.content[0].text;
-    document.getElementById('ai-eval-output').textContent = text;
-    // Auto-detect transport recommendation
-    if (text.toLowerCase().includes('air ambulance')) markTransportRec('air-amb');
-    else if (text.toLowerCase().includes('stretcher')) markTransportRec('stretcher');
-    else if (text.toLowerCase().includes('ground')) markTransportRec('ground');
+    renderEvalOutput(text);
+    if (/air ambulance/i.test(text)) markTransportRec('air-amb');
+    else if (/stretcher/i.test(text)) markTransportRec('stretcher');
+    else if (/ground/i.test(text)) markTransportRec('ground');
     else markTransportRec('commercial');
     toast('AI evaluation complete.', 'success');
   } catch(e) {
-    document.getElementById('ai-eval-output').textContent = `Error: ${e.message}\n\nPlease check your Anthropic API key in the source code (ANTHROPIC_KEY variable).`;
-    toast('AI evaluation failed. Check API key.', 'error');
+    document.getElementById('ai-eval-output').textContent = `Error: ${e.message}\n\nCheck the Anthropic API key in Settings.`;
+    toast('AI evaluation failed: ' + e.message, 'error');
   }
   spinner.style.display = 'none';
+}
+
+function renderEvalOutput(text) {
+  const out = document.getElementById('ai-eval-output');
+  // Parse sections (very permissive, headers are matched case-insensitively)
+  const sec = (name) => {
+    const re = new RegExp(`(?:^|\\n)\\s*${name}\\s*\\n([\\s\\S]*?)(?=\\n[A-Z][A-Z ]{3,}\\n|$)`, 'i');
+    const m = text.match(re); return m ? m[1].trim() : '';
+  };
+  const summary  = sec('CASE AT A GLANCE');
+  const fitness  = sec('FITNESS TO FLY');
+  const missing  = sec('MISSING CRITICAL INFORMATION');
+  const risks    = sec('KEY RISKS');
+  const actions  = sec('RECOMMENDED NEXT ACTIONS');
+  const updates  = sec('SUGGESTED CASE UPDATES');
+  // Pull suggested actions for the import button
+  lastEvalActions = actions.split('\n').map(l => l.replace(/^\s*\d+[.)]\s*/,'').replace(/^[-•*]\s*/,'').trim()).filter(Boolean);
+  // Parse updates (key=value lines), ignore "none"
+  lastEvalUpdates = {};
+  updates.split('\n').forEach(line => {
+    const m = line.trim().match(/^([a-zA-Z]+)\s*=\s*(.+)$/);
+    if (m && m[2].toLowerCase() !== 'none') lastEvalUpdates[m[1]] = m[2].trim();
+  });
+  const fitClass = /\bFIT\b/i.test(fitness) && !/CONDITIONAL|NOT YET/i.test(fitness) ? 'fit'
+                 : /CONDITIONAL/i.test(fitness) ? 'cond' : /NOT YET|UNFIT/i.test(fitness) ? 'unfit' : '';
+  const fitBadge = { fit:'background:rgba(39,174,96,0.18);color:#1e7d44', cond:'background:rgba(241,196,15,0.18);color:#946800', unfit:'background:rgba(192,57,43,0.18);color:#a23121' }[fitClass] || '';
+  const bullets = s => s.split('\n').map(l => l.replace(/^\s*[-•*]\s*/,'').trim()).filter(Boolean);
+  const numList = s => s.split('\n').map(l => l.replace(/^\s*\d+[.)]\s*/,'').trim()).filter(Boolean);
+  const renderBullets = arr => arr.length ? '<ul style="margin:6px 0 0 18px;line-height:1.6">' + arr.map(b => `<li>${escHtml(b)}</li>`).join('') + '</ul>' : '<em style="color:var(--text-faint)">none</em>';
+  out.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:14px">
+      ${summary ? `<div><div style="font-size:11px;font-weight:700;color:#9ec6ff;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:4px">Case at a glance</div><div style="font-size:13px;color:#fff;line-height:1.55">${escHtml(summary)}</div></div>` : ''}
+      ${fitness ? `<div style="display:flex;align-items:center;gap:8px"><div style="font-size:11px;font-weight:700;color:#9ec6ff;letter-spacing:0.5px;text-transform:uppercase">Fitness to fly</div><span style="font-size:11px;font-weight:700;padding:3px 9px;border-radius:10px;text-transform:uppercase;letter-spacing:0.4px;${fitBadge}">${escHtml(fitness)}</span></div>` : ''}
+      ${missing ? `<div><div style="font-size:11px;font-weight:700;color:#ffb96b;letter-spacing:0.5px;text-transform:uppercase">Missing critical information</div>${renderBullets(bullets(missing))}</div>` : ''}
+      ${risks   ? `<div><div style="font-size:11px;font-weight:700;color:#ff8e7c;letter-spacing:0.5px;text-transform:uppercase">Key risks</div>${renderBullets(bullets(risks))}</div>` : ''}
+      ${actions ? `<div><div style="font-size:11px;font-weight:700;color:#7cf09f;letter-spacing:0.5px;text-transform:uppercase">Recommended next actions</div><ol style="margin:6px 0 0 22px;line-height:1.7">${numList(actions).map(b => `<li>${escHtml(b)}</li>`).join('')}</ol></div>` : ''}
+    </div>
+  `;
+  const bar = document.getElementById('eval-action-bar');
+  if (bar) {
+    const hasActs = lastEvalActions.length > 0;
+    const updKeys = Object.keys(lastEvalUpdates);
+    bar.style.display = (hasActs || updKeys.length) ? 'flex' : 'none';
+    document.getElementById('eval-add-tasks-btn').style.display = hasActs ? 'inline-flex' : 'none';
+    document.getElementById('eval-add-tasks-btn').textContent = `↪ Add ${lastEvalActions.length} action(s) to checklist`;
+    const updBtn = document.getElementById('eval-apply-updates-btn');
+    updBtn.style.display = updKeys.length ? 'inline-flex' : 'none';
+    updBtn.textContent = `↪ Apply ${updKeys.length} case update(s)`;
+  }
+}
+
+async function importAiActionsAsTasks() {
+  if (!currentEvalCaseId || !lastEvalActions.length) return;
+  const c = cases.find(x => x.id === currentEvalCaseId); if (!c) return;
+  if (!Array.isArray(c.tasks)) c.tasks = [];
+  let added = 0;
+  for (const title of lastEvalActions) {
+    c.tasks.push({ title, done:false, createdAt:new Date().toISOString(), source:'ai-eval' });
+    added++;
+  }
+  await persistCase(c);
+  toast(`${added} action(s) added to the case checklist.`, 'success');
+  refreshCaseModalIfOpen();
+}
+
+async function applyAiUpdatesToCase() {
+  if (!currentEvalCaseId) return;
+  const c = cases.find(x => x.id === currentEvalCaseId); if (!c) return;
+  const keys = Object.keys(lastEvalUpdates); if (!keys.length) return;
+  // Don't overwrite existing values — same conservative rule as extraction merge.
+  const applied = [];
+  keys.forEach(k => {
+    const v = lastEvalUpdates[k];
+    if (v && (!c[k] || c[k] === '' || c[k] === '?')) { c[k] = v; applied.push(k); }
+  });
+  await persistCase(c);
+  toast(applied.length ? `Updated ${applied.length} case field(s): ${applied.join(', ')}` : 'No empty fields to update — case data already present.', applied.length ? 'success' : 'info');
+  refreshCaseModalIfOpen();
+  if (currentEvalCaseId) loadCaseForEval(currentEvalCaseId);
 }
 
 function markTransportRec(mode) {
