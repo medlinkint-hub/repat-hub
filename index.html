@@ -4892,6 +4892,15 @@ function loadCaseForEval(id) {
   currentEvalCaseId = id;
   const c = cases.find(x => x.id === id);
   if (!c) return;
+  // Kick off attachment lazy-load so they're in memory when Re-evaluate is tapped.
+  if (c.attachments === undefined && typeof db !== 'undefined' && db) {
+    loadAttachments(id).then(() => {
+      // If the user is still on this case, refresh the context with attachment list included
+      if (currentEvalCaseId === id) {
+        document.getElementById('eval-manual-input').value = buildFullCaseContext(c);
+      }
+    });
+  }
   document.getElementById('eval-manual-input').value = buildFullCaseContext(c);
   renderEvalNotes();
 }
@@ -5054,11 +5063,14 @@ let lastEvalActions = [];
 let lastEvalUpdates = {};
 
 async function runAIEval() {
-  // Always rebuild the input from the current case state so the AI sees the
-  // latest attachments / notes / pre-flight / etc.
+  // Always rebuild from the current case so the AI sees the latest state.
   const c = currentEvalCaseId ? cases.find(x => x.id === currentEvalCaseId) : null;
   let input;
   if (c) {
+    // Make sure attachments are loaded before reading them.
+    if (c.attachments === undefined && typeof db !== 'undefined' && db) {
+      await loadAttachments(c.id);
+    }
     input = buildFullCaseContext(c);
     document.getElementById('eval-manual-input').value = input;
   } else {
@@ -5068,34 +5080,86 @@ async function runAIEval() {
 
   const spinner = document.getElementById('eval-spinner');
   spinner.style.display = 'inline-block';
-  document.getElementById('ai-eval-output').innerHTML = '<div class="ai-thinking">⬡ Reading the whole case<div class="dots"><span>.</span><span>.</span><span>.</span></div></div>';
   document.getElementById('eval-action-bar').style.display = 'none';
+
+  // ── Build a multi-modal message: case context + every attachment + every saved doc ──
+  const messageContent = [];
+  const attachments = (c?.attachments || []);
+  const savedDocs   = (c?.documents   || []);
+  // Hard input budget so a case with many heavy PDFs doesn't blow Claude's context.
+  const TOTAL_BUDGET = 700 * 1024;  // ~180K tokens worst-case
+  let usedBytes = 0;
+  const includedAtt = [];
+  const skippedAtt  = [];
+  for (const a of attachments) {
+    const sz = a.size || 0;
+    const isImg = (a.type||'').startsWith('image/');
+    const isPdf = a.type === 'application/pdf' || /\.pdf$/i.test(a.name);
+    const wouldFit = a.base64 && usedBytes + sz <= TOTAL_BUDGET;
+    if ((isImg || isPdf) && a.base64 && !wouldFit) {
+      skippedAtt.push(a);
+      messageContent.push({ type:'text', text:`[Attachment too large to read in this evaluation: "${a.name}" · ${a.category||'Other'} · ${formatSize(sz)}. AI will rely on its filename only.]` });
+      continue;
+    }
+    if (isImg && a.base64) {
+      messageContent.push({ type:'image', source:{ type:'base64', media_type: a.type, data: a.base64 } });
+      messageContent.push({ type:'text', text:`[Image attachment · ${a.category||'Other'} · "${a.name}"]` });
+      includedAtt.push(a); usedBytes += sz;
+    } else if (isPdf && a.base64) {
+      messageContent.push({ type:'document', source:{ type:'base64', media_type:'application/pdf', data: a.base64 } });
+      messageContent.push({ type:'text', text:`[PDF attachment · ${a.category||'Other'} · "${a.name}"]` });
+      includedAtt.push(a); usedBytes += sz;
+    } else {
+      // Word / Excel / other: can't be parsed natively — mention metadata so AI knows it exists.
+      messageContent.push({ type:'text', text:`[Non-parseable attachment present but not opened: "${a.name}" · ${a.category||'Other'} · ${formatSize(sz)}. Tell the user to attach a PDF/image version if its content is needed.]` });
+    }
+  }
+  // Include previously generated text documents (MEDIF / Fit-to-Fly / etc.)
+  for (const d of savedDocs) {
+    const label = `${d.type}${d.airline ? ' (' + d.airline + ')' : ''} — generated ${(d.generatedAt||'').slice(0,10)}`;
+    messageContent.push({ type:'text', text:`=== Saved document: ${label} ===\n${d.content}\n=== End ===` });
+  }
+  // Finally the structured case context as the closing text block.
+  messageContent.push({ type:'text', text:`STRUCTURED CASE STATE:\n\n${input}` });
+
+  // Live status while we wait
+  const statusBits = [];
+  if (includedAtt.length)  statusBits.push(`${includedAtt.length} attachment(s)`);
+  if (savedDocs.length)    statusBits.push(`${savedDocs.length} generated doc(s)`);
+  if (skippedAtt.length)   statusBits.push(`<span style="color:#ffb96b">${skippedAtt.length} skipped (size budget)</span>`);
+  document.getElementById('ai-eval-output').innerHTML =
+    `<div class="ai-thinking">⬡ Reading the whole case${statusBits.length ? ' — ' + statusBits.join(' · ') : ''}<div class="dots"><span>.</span><span>.</span><span>.</span></div></div>`;
 
   const system = `You are a senior medical transport physician and repatriation coordinator at HealthWatch Assistance (HWA), Thessaloniki, Greece.
 
-The user will provide the FULL state of a repatriation case — patient identification, medical condition, vitals, flags, logistics, flight, contacts, hotels, tasks already done/pending, attachments, generated documents, pre-flight assessment, coordinator notes.
+You are given the FULL state of a repatriation case:
+- Attached medical PDFs and images (referral letters, discharge summaries, lab results, passport scans, insurance forms, flight confirmations, hotel vouchers, signed MEDIFs) — READ THESE.
+- Previously generated documents (MEDIF for the airline, Fit-to-Fly, Escort Briefing, Cost Estimate) — verify they are still consistent with the current case state.
+- The structured case state — patient identification, medical condition, vitals, flags, logistics, flight, contacts, hotels, tasks done/pending, pre-flight assessment, coordinator notes.
 
-Your output must be SHORT, SPECIFIC TO THIS CASE, and IMMEDIATELY ACTIONABLE. Do not produce generic textbook content — assume the reader is an experienced coordinator. Tie every recommendation to something concrete from the case state (e.g. "because no MEDIF has been generated for Turkish Airlines yet").
+Use ALL of these inputs together. If an attachment contradicts the structured state, flag it. If an attachment contains new information (e.g. a referral letter mentions a medication not yet on the case, or a flight confirmation shows a different PNR), suggest a case update.
+
+Your output must be SHORT, SPECIFIC TO THIS CASE, and IMMEDIATELY ACTIONABLE. No textbook content. Tie every recommendation to something concrete in the inputs.
 
 Output in the following sections, in this exact order, using these exact ALL-CAPS headers (this format is parsed):
 
 CASE AT A GLANCE
-Two to four lines. Patient, diagnosis in plain words, where they are, where they're going, current case status (e.g. "awaiting MEDIF approval").
+Two to four lines. Patient, diagnosis in plain words, where they are, where they're going, current case status.
 
 FITNESS TO FLY
 One line: FIT / CONDITIONAL / NOT YET — with the single most important reason.
 
 MISSING CRITICAL INFORMATION
-Bulleted list. Only items that block forward progress. Use blank-bullet "- " prefix.
+Bulleted list ("- " prefix). Only items that block forward progress.
 
 KEY RISKS
-Bulleted list, max 5. Each one a specific risk for THIS case (not generic).
+Bulleted list, max 5. Specific risks for this case.
 
 RECOMMENDED NEXT ACTIONS
-A numbered list of 4-7 imperative actions. Each one ≤ 12 words. Concrete and orderable. Example: "Email signed MEDIF to medical@thy.com (THY needs 48h)". Do not repeat actions already completed in TASKS.
+Numbered list of 4-7 imperative actions, each ≤ 12 words. Concrete and ordered. Do not repeat completed tasks.
 
 SUGGESTED CASE UPDATES
-If recent coordinator NOTES contain information that should update structured case fields, emit one line per update in the format:
+If attachments OR coordinator notes contain information that should update structured case fields, emit one line per update in the format:
   key=value
 Use only these keys: diagnosis, icd, mobility, o2, o2FlowRate, escortRequired, infect, psych, treatingDoctor, treatingDoctorPhone, currentHosp, destHosp, flightOutNumber, flightOutDate, flightOutAirline, flightOutCabin, pnr, insurerCaseNo, hospitalCostEstimate, currency, familyName, familyPhone.
 If nothing to update, write "none".`;
@@ -5111,9 +5175,9 @@ If nothing to update, write "none".`;
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 1400,
+        max_tokens: 1500,
         system,
-        messages: [{ role:'user', content: `Full case state:\n\n${input}` }]
+        messages: [{ role:'user', content: messageContent }]
       })
     });
     const data = await res.json();
@@ -5124,7 +5188,11 @@ If nothing to update, write "none".`;
     else if (/stretcher/i.test(text)) markTransportRec('stretcher');
     else if (/ground/i.test(text)) markTransportRec('ground');
     else markTransportRec('commercial');
-    toast('AI evaluation complete.', 'success');
+    const summary = [];
+    summary.push('Read ' + includedAtt.length + ' attachment(s)');
+    if (savedDocs.length) summary.push(savedDocs.length + ' generated doc(s)');
+    if (skippedAtt.length) summary.push(skippedAtt.length + ' skipped (too large)');
+    toast('AI evaluation complete · ' + summary.join(' · '), 'success');
   } catch(e) {
     document.getElementById('ai-eval-output').textContent = `Error: ${e.message}\n\nCheck the Anthropic API key in Settings.`;
     toast('AI evaluation failed: ' + e.message, 'error');
