@@ -1978,6 +1978,7 @@ The AI will provide:
       <button class="btn btn-ghost btn-sm" onclick="flightFromModal()">✈ Search Flights</button>
       <button class="btn btn-ghost btn-sm" onclick="docsFromModal()">⬚ Generate Docs</button>
       <button class="btn btn-ghost btn-sm" onclick="openAirlineMedifPicker()">📋 Airline MEDIF</button>
+      <button class="btn btn-ghost btn-sm" onclick="openPreflightFromModal()">🩺 Pre-flight</button>
       <button class="btn btn-ghost btn-sm" onclick="openRepatReportFromModal()">📋 Repat Report</button>
       <button class="btn btn-danger btn-sm" onclick="deleteCase()">🗑 Delete</button>
     </div>
@@ -2168,6 +2169,212 @@ The AI will provide:
       <button class="btn btn-ghost btn-sm" onclick="inspectAirlineTemplate(currentMedifAirlineKey)" title="Show the field names from the official PDF (after upload)">🔍 Inspect template</button>
       <button class="btn btn-ghost btn-sm" onclick="emailMedifToAirline()">📨 Email to airline</button>
       <button class="btn btn-ghost btn-sm" onclick="closeMedif()" style="margin-left:auto">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Pre-Flight Assessment Modal ─── -->
+<div class="modal-backdrop" id="preflight-modal" style="display:none" onclick="if(event.target===this)closePreflight()">
+  <div class="modal-box rr-modal" style="max-width:920px;max-height:96vh">
+    <div class="modal-header rr-no-print">
+      <h2>🩺 Pre-Flight Assessment — <span id="pf-case-label"></span></h2>
+      <button class="modal-close" onclick="closePreflight()">✕</button>
+    </div>
+
+    <div class="rr-no-print" style="background:rgba(192,57,43,0.06);border:1px solid rgba(192,57,43,0.2);border-radius:6px;padding:9px 13px;font-size:12px;color:var(--text-dim);margin-bottom:14px;line-height:1.5">
+      Completed by the medical escort immediately before boarding. Confirms fitness for flight, fresh vitals, equipment status. Saved on the case and exported as PDF for the airline if requested.
+    </div>
+
+    <div id="pf-printable">
+      <div style="border-bottom:2px solid #c0392b;padding-bottom:10px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:flex-end">
+        <div>
+          <div style="font-size:20px;font-weight:800;color:#0c1f3f;letter-spacing:-0.3px">Pre-Flight Medical Assessment</div>
+          <div style="font-size:12px;color:#6b7c93;margin-top:2px">HealthWatch Assistance — completed pre-boarding by medical escort</div>
+        </div>
+        <div style="text-align:right;font-size:11px;color:#6b7c93">
+          <div id="pf-print-caseid" style="font-weight:600;color:#0c1f3f"></div>
+          <div id="pf-print-when"></div>
+        </div>
+      </div>
+
+      <!-- 1. Identification -->
+      <div class="rr-section">
+        <div class="rr-section-title">1 · Identification</div>
+        <div class="rr-grid-3">
+          <div class="rr-field"><label>Patient</label><input id="pf-patient" disabled></div>
+          <div class="rr-field"><label>Case</label><input id="pf-caseid" disabled></div>
+          <div class="rr-field"><label>Diagnosis</label><input id="pf-diagnosis" disabled></div>
+          <div class="rr-field"><label>Assessment date</label><input id="pf-date" type="date"></div>
+          <div class="rr-field"><label>Assessment time</label><input id="pf-time" type="time"></div>
+          <div class="rr-field"><label>Location</label><input id="pf-location" placeholder="e.g. ATH airport gate B19, hospital"></div>
+          <div class="rr-field"><label>Escort name</label><input id="pf-escort-name" placeholder="Dr / RN name"></div>
+          <div class="rr-field"><label>Role</label>
+            <select id="pf-escort-role"><option value="">—</option><option>Flight Physician</option><option>Flight Nurse</option><option>Paramedic</option><option>Non-medical escort</option></select>
+          </div>
+          <div class="rr-field"><label>License / reg #</label><input id="pf-escort-license"></div>
+        </div>
+      </div>
+
+      <!-- 2. General appearance -->
+      <div class="rr-section">
+        <div class="rr-section-title">2 · General appearance</div>
+        <div class="rr-grid-3">
+          <div class="rr-field"><label>Consciousness</label>
+            <select id="pf-conscious"><option value="">—</option><option>Alert</option><option>Drowsy</option><option>Confused</option><option>Responsive to pain</option><option>Unresponsive</option></select>
+          </div>
+          <div class="rr-field"><label>Orientation</label>
+            <select id="pf-orientation"><option value="">—</option><option>x3 (person/place/time)</option><option>x2</option><option>x1</option><option>Disoriented</option></select>
+          </div>
+          <div class="rr-field"><label>Distress level</label>
+            <select id="pf-distress"><option value="">—</option><option>None — calm</option><option>Mild</option><option>Moderate</option><option>Severe</option></select>
+          </div>
+          <div class="rr-field"><label>Skin colour</label>
+            <select id="pf-skin"><option value="">—</option><option>Normal</option><option>Pale</option><option>Cyanotic</option><option>Flushed</option><option>Jaundiced</option></select>
+          </div>
+          <div class="rr-field"><label>Hydration</label>
+            <select id="pf-hydration"><option value="">—</option><option>Well hydrated</option><option>Mild dry</option><option>Moderate dehydration</option></select>
+          </div>
+          <div class="rr-field"><label>Pain score (0–10)</label><input id="pf-pain" type="number" min="0" max="10"></div>
+        </div>
+        <div class="rr-field" style="margin-top:10px"><label>New symptoms since last assessment</label><textarea id="pf-new-symptoms" rows="2" placeholder="None / describe…"></textarea></div>
+      </div>
+
+      <!-- 3. Vital signs -->
+      <div class="rr-section">
+        <div class="rr-section-title">3 · Vital signs (fresh, immediately pre-boarding)</div>
+        <div class="rr-grid-6">
+          <div class="rr-field"><label>BP (mmHg)</label><input id="pf-bp" placeholder="120/80"></div>
+          <div class="rr-field"><label>HR (bpm)</label><input id="pf-hr" type="number"></div>
+          <div class="rr-field"><label>SpO₂ (%)</label><input id="pf-spo2" type="number" min="0" max="100"></div>
+          <div class="rr-field"><label>Temp (°C)</label><input id="pf-temp" type="number" step="0.1"></div>
+          <div class="rr-field"><label>RR (/min)</label><input id="pf-rr" type="number"></div>
+          <div class="rr-field"><label>GCS (3–15)</label><input id="pf-gcs" type="number" min="3" max="15"></div>
+        </div>
+        <div class="rr-grid-3" style="margin-top:10px">
+          <div class="rr-field"><label>SpO₂ on…</label>
+            <select id="pf-spo2-on"><option>Room air</option><option>Supplemental O₂</option><option>Ventilator</option></select>
+          </div>
+          <div class="rr-field"><label>O₂ flow at assessment (L/min)</label><input id="pf-o2-flow" type="number" step="0.5"></div>
+          <div class="rr-field"><label>Blood glucose (mmol/L) — if diabetic</label><input id="pf-glucose" type="number" step="0.1"></div>
+        </div>
+      </div>
+
+      <!-- 4. Cardiovascular -->
+      <div class="rr-section">
+        <div class="rr-section-title">4 · Cardiovascular & Respiratory</div>
+        <div class="rr-grid-3">
+          <div class="rr-field"><label>Heart rhythm</label>
+            <select id="pf-rhythm"><option value="">—</option><option>Regular</option><option>Irregular — controlled AF</option><option>Irregular — other</option></select>
+          </div>
+          <div class="rr-field"><label>Peripheral pulses</label>
+            <select id="pf-pulses"><option value="">—</option><option>Present, normal</option><option>Weak</option><option>Absent</option></select>
+          </div>
+          <div class="rr-field"><label>Capillary refill (s)</label><input id="pf-crt" placeholder="<2"></div>
+          <div class="rr-field"><label>Peripheral edema</label>
+            <select id="pf-edema"><option value="">—</option><option>None</option><option>Mild ankles</option><option>Moderate</option><option>Generalised</option></select>
+          </div>
+          <div class="rr-field"><label>Breath sounds</label>
+            <select id="pf-breath"><option value="">—</option><option>Clear bilaterally</option><option>Wheeze</option><option>Crackles</option><option>Decreased one side</option></select>
+          </div>
+          <div class="rr-field"><label>Accessory muscle use</label>
+            <select id="pf-accessory"><option value="">—</option><option>No</option><option>Yes</option></select>
+          </div>
+        </div>
+        <div class="rr-field" style="margin-top:10px"><label>Cardiovascular / respiratory notes</label><textarea id="pf-cv-notes" rows="2"></textarea></div>
+      </div>
+
+      <!-- 5. Neuro -->
+      <div class="rr-section">
+        <div class="rr-section-title">5 · Neurological & other systems</div>
+        <div class="rr-grid-3">
+          <div class="rr-field"><label>Pupils</label>
+            <select id="pf-pupils"><option value="">—</option><option>PEARL (equal & reactive)</option><option>Unequal</option><option>Sluggish</option><option>Fixed</option></select>
+          </div>
+          <div class="rr-field"><label>Power & tone</label>
+            <select id="pf-power"><option value="">—</option><option>Normal</option><option>Mild weakness</option><option>Significant deficit</option></select>
+          </div>
+          <div class="rr-field"><label>Speech</label>
+            <select id="pf-speech"><option value="">—</option><option>Normal</option><option>Slurred</option><option>Aphasic</option><option>N/A — sedated</option></select>
+          </div>
+        </div>
+        <div class="rr-field" style="margin-top:10px"><label>Other systems / wounds / catheters / drains</label><textarea id="pf-other" rows="2"></textarea></div>
+      </div>
+
+      <!-- 6. Medications -->
+      <div class="rr-section">
+        <div class="rr-section-title">6 · Medications</div>
+        <div class="rr-grid-2">
+          <div class="rr-field"><label>Last dose taken (drug · dose · time)</label><textarea id="pf-last-dose" rows="2"></textarea></div>
+          <div class="rr-field"><label>Next dose due (drug · dose · time)</label><textarea id="pf-next-dose" rows="2"></textarea></div>
+        </div>
+        <div class="rr-field" style="margin-top:10px"><label>Medications administered in last 6 h</label><textarea id="pf-recent-meds" rows="2" placeholder="None / drug · dose · time · route"></textarea></div>
+      </div>
+
+      <!-- 7. Equipment check -->
+      <div class="rr-section">
+        <div class="rr-section-title">7 · Equipment & escort kit check</div>
+        <div class="rr-grid-3">
+          <div class="rr-field"><label>O₂ cylinders</label>
+            <select id="pf-o2-check"><option value="">—</option><option>Full + spare</option><option>Sufficient</option><option>Insufficient — RESOLVED</option><option>Insufficient — ESCALATED</option></select>
+          </div>
+          <div class="rr-field"><label>IV access</label>
+            <select id="pf-iv"><option value="">—</option><option>Patent</option><option>Blocked — replaced</option><option>None required</option></select>
+          </div>
+          <div class="rr-field"><label>Monitor / SpO₂</label>
+            <select id="pf-monitor"><option value="">—</option><option>Working — battery OK</option><option>Working — charged in flight</option><option>Faulty — replaced</option></select>
+          </div>
+          <div class="rr-field"><label>Suction unit</label>
+            <select id="pf-suction"><option value="">—</option><option>Available + working</option><option>Not required</option></select>
+          </div>
+          <div class="rr-field"><label>Emergency drug kit</label>
+            <select id="pf-edrugs"><option value="">—</option><option>Complete + in date</option><option>Items expired — replaced</option></select>
+          </div>
+          <div class="rr-field"><label>Defib / AED</label>
+            <select id="pf-aed"><option value="">—</option><option>Carried + tested</option><option>On-aircraft only</option><option>Not required</option></select>
+          </div>
+        </div>
+        <div class="rr-field" style="margin-top:10px"><label>Equipment notes</label><textarea id="pf-equip-notes" rows="2"></textarea></div>
+      </div>
+
+      <!-- 8. Fit for flight -->
+      <div class="rr-section">
+        <div class="rr-section-title">8 · Fit-for-flight determination</div>
+        <div class="rr-grid-3">
+          <div class="rr-field"><label>Final assessment</label>
+            <select id="pf-fitness" onchange="renderFitnessChip()">
+              <option value="">— select —</option>
+              <option value="fit">✅ FIT TO FLY</option>
+              <option value="conditions">⚠ FIT WITH CONDITIONS</option>
+              <option value="unfit">⛔ UNFIT TO FLY — postpone</option>
+            </select>
+          </div>
+          <div class="rr-field" style="grid-column:span 2"><label>Fitness summary</label><input id="pf-fitness-summary" placeholder="One-line summary of fitness decision"></div>
+        </div>
+        <div class="rr-field" style="margin-top:10px"><label>In-flight conditions / instructions</label><textarea id="pf-conditions" rows="3" placeholder="Continuous SpO₂ monitoring · O₂ at 2 L/min throughout · semi-recumbent position · LMWH at 22:00 · no aircraft meal · hourly observations…"></textarea></div>
+        <div class="rr-field" style="margin-top:10px"><label>Risk factors during flight (and mitigations)</label><textarea id="pf-risks" rows="2"></textarea></div>
+        <div class="rr-field" style="margin-top:10px"><label>Reason if UNFIT</label><textarea id="pf-unfit-reason" rows="2"></textarea></div>
+      </div>
+
+      <!-- 9. Sign-off -->
+      <div class="rr-section" style="border-bottom:none">
+        <div class="rr-section-title">9 · Sign-off</div>
+        <div style="display:flex;gap:30px;align-items:flex-end">
+          <div style="flex:1;border-bottom:1px solid #888;height:42px"><span style="font-size:10px;color:#888">Escort signature</span></div>
+          <div class="rr-field" style="width:160px"><label>Boarding time</label><input id="pf-boarding-time" type="time"></div>
+        </div>
+        <div style="margin-top:12px;font-size:11px;color:#6b7c93;line-height:1.6">
+          Issued by HealthWatch Assistance S.A. · Thermi, Thessaloniki, Greece · www.healthwatch.gr<br>
+          This pre-flight assessment confirms the patient's clinical status immediately before boarding. Retain a copy with the in-flight medical kit.
+        </div>
+      </div>
+    </div>
+
+    <div class="rr-no-print" style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap;border-top:1px solid var(--border);padding-top:16px;align-items:center">
+      <div id="pf-fitness-chip" style="font-size:11px;font-weight:700;padding:5px 11px;border-radius:14px;text-transform:uppercase;letter-spacing:0.4px;display:none"></div>
+      <div style="flex:1"></div>
+      <button class="btn btn-ghost btn-sm" onclick="savePreflight()">💾 Save</button>
+      <button class="btn btn-primary btn-sm" onclick="generatePreflightPdf()" id="pf-pdf-btn">📄 PDF</button>
+      <button class="btn btn-ghost btn-sm" onclick="closePreflight()">Close</button>
     </div>
   </div>
 </div>
@@ -3271,6 +3478,166 @@ www.healthwatch.gr · sami@healthwatch.gr
   toast('Opening your email client — attach the downloaded MEDIF PDF before sending.', 'info');
 }
 
+// ─── Pre-Flight Assessment ───
+let currentPreflightCaseId = null;
+function openPreflightFromModal() {
+  if (!currentModalCaseId) return;
+  const id = currentModalCaseId;
+  closeCaseModal();
+  openPreflight(id);
+}
+function openPreflight(caseId) {
+  const c = cases.find(x => x.id === caseId); if (!c) return;
+  currentPreflightCaseId = caseId;
+  const a = c.preflight || {};
+  const now = new Date();
+  const today = now.toISOString().slice(0,10);
+  const hhmm  = now.toTimeString().slice(0,5);
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val ?? ''; };
+
+  document.getElementById('pf-case-label').textContent = `${c.id} · ${c.firstname||''} ${c.lastname||''}`.trim();
+  document.getElementById('pf-print-caseid').textContent = `Case ${c.id} · ${c.firstname||''} ${c.lastname||''}`.trim();
+
+  set('pf-patient',   `${c.firstname||''} ${c.lastname||''}`.trim());
+  set('pf-caseid',    c.id);
+  set('pf-diagnosis', c.diagnosis);
+  set('pf-date',      a.date || today);
+  set('pf-time',      a.time || hhmm);
+  set('pf-location',  a.location || ((c.originIata||'') + (c.originIata ? ' airport' : '')));
+  set('pf-escort-name',    a.escortName    || (typeof c.escort === 'string' ? c.escort : c.escort?.name));
+  set('pf-escort-role',    a.escortRole    || '');
+  set('pf-escort-license', a.escortLicense || '');
+
+  set('pf-conscious',   a.conscious   || 'Alert');
+  set('pf-orientation', a.orientation || 'x3 (person/place/time)');
+  set('pf-distress',    a.distress    || 'None — calm');
+  set('pf-skin',        a.skin        || 'Normal');
+  set('pf-hydration',   a.hydration   || 'Well hydrated');
+  set('pf-pain',        a.pain        ?? '');
+  set('pf-new-symptoms', a.newSymptoms || '');
+
+  set('pf-bp',     a.bp     || c.bp);
+  set('pf-hr',     a.hr     || c.hr);
+  set('pf-spo2',   a.spo2   || c.spo2);
+  set('pf-temp',   a.temp   || c.temp);
+  set('pf-rr',     a.rr     || c.rr);
+  set('pf-gcs',    a.gcs    || c.gcs);
+  set('pf-spo2-on', a.spo2On  || (c.o2 && c.o2 !== 'none' ? 'Supplemental O₂' : 'Room air'));
+  set('pf-o2-flow', a.o2Flow  || c.o2FlowRate);
+  set('pf-glucose', a.glucose || '');
+
+  set('pf-rhythm',   a.rhythm   || 'Regular');
+  set('pf-pulses',   a.pulses   || 'Present, normal');
+  set('pf-crt',      a.crt      || '<2');
+  set('pf-edema',    a.edema    || 'None');
+  set('pf-breath',   a.breath   || 'Clear bilaterally');
+  set('pf-accessory',a.accessory|| 'No');
+  set('pf-cv-notes', a.cvNotes  || '');
+
+  set('pf-pupils', a.pupils || 'PEARL (equal & reactive)');
+  set('pf-power',  a.power  || 'Normal');
+  set('pf-speech', a.speech || 'Normal');
+  set('pf-other',  a.other  || '');
+
+  set('pf-last-dose',    a.lastDose    || '');
+  set('pf-next-dose',    a.nextDose    || '');
+  set('pf-recent-meds',  a.recentMeds  || '');
+
+  set('pf-o2-check', a.o2Check || 'Full + spare');
+  set('pf-iv',       a.iv      || 'None required');
+  set('pf-monitor',  a.monitor || 'Working — battery OK');
+  set('pf-suction',  a.suction || 'Not required');
+  set('pf-edrugs',   a.edrugs  || 'Complete + in date');
+  set('pf-aed',      a.aed     || 'On-aircraft only');
+  set('pf-equip-notes', a.equipNotes || '');
+
+  set('pf-fitness',         a.fitness         || '');
+  set('pf-fitness-summary', a.fitnessSummary  || '');
+  set('pf-conditions',      a.conditions      || '');
+  set('pf-risks',           a.risks           || '');
+  set('pf-unfit-reason',    a.unfitReason     || '');
+  set('pf-boarding-time',   a.boardingTime    || '');
+
+  document.getElementById('pf-print-when').textContent =
+    `${document.getElementById('pf-date').value} ${document.getElementById('pf-time').value}`;
+  renderFitnessChip();
+  document.getElementById('preflight-modal').style.display = 'flex';
+}
+function closePreflight() {
+  document.getElementById('preflight-modal').style.display = 'none';
+  currentPreflightCaseId = null;
+}
+function renderFitnessChip() {
+  const val = document.getElementById('pf-fitness')?.value;
+  const chip = document.getElementById('pf-fitness-chip');
+  if (!chip) return;
+  if (!val) { chip.style.display = 'none'; return; }
+  chip.style.display = 'inline-block';
+  if (val === 'fit')        { chip.textContent = '✅ FIT TO FLY';        chip.style.background = 'rgba(39,174,96,0.15)'; chip.style.color = '#1e7d44'; }
+  else if (val === 'conditions') { chip.textContent = '⚠ FIT WITH CONDITIONS'; chip.style.background = 'rgba(241,196,15,0.18)'; chip.style.color = '#946800'; }
+  else                      { chip.textContent = '⛔ UNFIT TO FLY';       chip.style.background = 'rgba(192,57,43,0.15)'; chip.style.color = '#a23121'; }
+}
+function collectPreflightData() {
+  const v = id => document.getElementById(id)?.value || '';
+  return {
+    date:v('pf-date'), time:v('pf-time'), location:v('pf-location'),
+    escortName:v('pf-escort-name'), escortRole:v('pf-escort-role'), escortLicense:v('pf-escort-license'),
+    conscious:v('pf-conscious'), orientation:v('pf-orientation'), distress:v('pf-distress'),
+    skin:v('pf-skin'), hydration:v('pf-hydration'), pain:v('pf-pain'),
+    newSymptoms:v('pf-new-symptoms'),
+    bp:v('pf-bp'), hr:v('pf-hr'), spo2:v('pf-spo2'), temp:v('pf-temp'), rr:v('pf-rr'), gcs:v('pf-gcs'),
+    spo2On:v('pf-spo2-on'), o2Flow:v('pf-o2-flow'), glucose:v('pf-glucose'),
+    rhythm:v('pf-rhythm'), pulses:v('pf-pulses'), crt:v('pf-crt'), edema:v('pf-edema'),
+    breath:v('pf-breath'), accessory:v('pf-accessory'), cvNotes:v('pf-cv-notes'),
+    pupils:v('pf-pupils'), power:v('pf-power'), speech:v('pf-speech'), other:v('pf-other'),
+    lastDose:v('pf-last-dose'), nextDose:v('pf-next-dose'), recentMeds:v('pf-recent-meds'),
+    o2Check:v('pf-o2-check'), iv:v('pf-iv'), monitor:v('pf-monitor'), suction:v('pf-suction'),
+    edrugs:v('pf-edrugs'), aed:v('pf-aed'), equipNotes:v('pf-equip-notes'),
+    fitness:v('pf-fitness'), fitnessSummary:v('pf-fitness-summary'),
+    conditions:v('pf-conditions'), risks:v('pf-risks'), unfitReason:v('pf-unfit-reason'),
+    boardingTime:v('pf-boarding-time'),
+    updatedAt: new Date().toISOString()
+  };
+}
+async function savePreflight() {
+  if (!currentPreflightCaseId) return;
+  const c = cases.find(x => x.id === currentPreflightCaseId); if (!c) return;
+  c.preflight = collectPreflightData();
+  await persistCase(c);
+  toast('Pre-flight assessment saved.', 'success');
+  refreshCaseModalIfOpen();
+}
+async function generatePreflightPdf() {
+  if (!currentPreflightCaseId) return;
+  if (typeof html2pdf === 'undefined') { toast('PDF library still loading.', 'error'); return; }
+  await savePreflight();
+  const c = cases.find(x => x.id === currentPreflightCaseId);
+  const btn = document.getElementById('pf-pdf-btn');
+  btn.disabled = true; const old = btn.textContent; btn.textContent = 'Generating…';
+  try {
+    const filename = `PreFlight_${c.id}_${new Date().toISOString().slice(0,10)}.pdf`;
+    const blob = await html2pdf().set({
+      margin: [10, 10, 14, 10], filename,
+      image: { type:'jpeg', quality:0.95 },
+      html2canvas: { scale:2, useCORS:true, backgroundColor:'#ffffff' },
+      jsPDF: { unit:'mm', format:'a4', orientation:'portrait' },
+      pagebreak: { mode:['css','legacy'] }
+    }).from(document.getElementById('pf-printable')).outputPdf('blob');
+
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob); link.download = filename; link.click();
+
+    if (blob.size <= ATTACHMENT_MAX_BYTES) {
+      const file = new File([blob], filename, { type:'application/pdf' });
+      await uploadAttachment(c.id, file, 'Pre-flight Assessment');
+    }
+    toast('Pre-flight PDF generated & attached to case.', 'success');
+  } catch(e) {
+    console.error(e); toast('PDF failed: ' + e.message, 'error');
+  }
+  btn.disabled = false; btn.textContent = old;
+}
+
 async function aiSuggestTasks(caseId) {
   const c = cases.find(x => x.id === caseId); if (!c) return;
   const key = getAnthropicKey();
@@ -4222,7 +4589,8 @@ function refreshCaseModalIfOpen() {
 function renderSavedDocsBlock(c) {
   const docs = Array.isArray(c.documents) ? c.documents : [];
   const hasReport = !!c.repatReport;
-  if (!docs.length && !hasReport) return '';
+  const hasPreflight = !!c.preflight;
+  if (!docs.length && !hasReport && !hasPreflight) return '';
   const names = { ftf:'Fit-to-Fly', medif:'MEDIF', 'escort-brief':'Escort Briefing', 'cost-estimate':'Cost Estimate' };
   const rows = docs.map((d, idx) => `
     <div style="display:flex;align-items:center;gap:10px;padding:9px 11px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px">
@@ -4247,10 +4615,28 @@ function renderSavedDocsBlock(c) {
       <button class="btn btn-ghost btn-sm" onclick="openRepatReportFromModal()" title="Open">↗ Open</button>
     </div>
   ` : '';
+  const preflight = c.preflight;
+  const fitMeta = preflight ? ({
+    fit:        { label:'✅ Fit to fly',         bg:'rgba(39,174,96,0.15)',  color:'#1e7d44' },
+    conditions: { label:'⚠ Fit with conditions', bg:'rgba(241,196,15,0.18)', color:'#946800' },
+    unfit:      { label:'⛔ Unfit to fly',        bg:'rgba(192,57,43,0.15)',  color:'#a23121' }
+  }[preflight.fitness] || { label:'— pending —', bg:'var(--surface-3)', color:'var(--text-dim)' }) : null;
+  const preflightRow = preflight ? `
+    <div style="display:flex;align-items:center;gap:10px;padding:9px 11px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          🩺 Pre-flight assessment
+          <span style="font-size:10px;font-weight:700;background:${fitMeta.bg};color:${fitMeta.color};padding:2px 8px;border-radius:10px;text-transform:uppercase;letter-spacing:0.4px">${fitMeta.label}</span>
+        </div>
+        <div style="font-size:11px;color:var(--text-dim)">${preflight.date||'?'} ${preflight.time||''} · ${escHtml(preflight.escortName||'—')} · SpO₂ ${preflight.spo2||'?'}% · BP ${preflight.bp||'?'} · HR ${preflight.hr||'?'}</div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="openPreflight('${c.id}')" title="Open">↗ Open</button>
+    </div>
+  ` : '';
   return `
     <div style="margin-top:18px">
-      <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:8px">Saved documents (${docs.length}${hasReport ? ' + report' : ''})</div>
-      <div style="display:flex;flex-direction:column;gap:6px">${rows}${reportRow}</div>
+      <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:8px">Saved documents (${docs.length}${hasReport ? ' + report' : ''}${hasPreflight ? ' + pre-flight' : ''})</div>
+      <div style="display:flex;flex-direction:column;gap:6px">${preflightRow}${rows}${reportRow}</div>
     </div>
   `;
 }
