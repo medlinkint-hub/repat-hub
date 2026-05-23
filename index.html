@@ -4621,13 +4621,30 @@ function renderNotesBlock(c) {
     <div style="margin-top:18px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;font-weight:600">📝 Notes (${notes.length}${notes.length > 3 ? ' · showing last 3' : ''})</div>
-        <button class="btn btn-ghost btn-sm" onclick="addNoteFromCaseModal('${c.id}')">+ Add note</button>
       </div>
-      <div style="display:flex;flex-direction:column;gap:6px">${rows || '<div style="font-size:12px;color:var(--text-faint);font-style:italic;padding:6px 2px">No notes yet. Add observations from phone calls, hospital updates, insurer decisions…</div>'}</div>
+      <div style="display:flex;flex-direction:column;gap:6px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:9px">
+        <textarea id="case-note-input-${c.id}" rows="2" placeholder="Add a note — phone update, new symptom, insurer decision, etc."
+                  style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:7px 9px;font-size:12px;color:var(--text);font-family:inherit;resize:vertical"></textarea>
+        <div style="display:flex;gap:6px;justify-content:flex-end">
+          <button class="btn btn-primary btn-sm" onclick="addNoteInline('${c.id}')">+ Add note</button>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">${rows || '<div style="font-size:12px;color:var(--text-faint);font-style:italic;padding:6px 2px">No notes yet.</div>'}</div>
     </div>
   `;
 }
+async function addNoteInline(caseId) {
+  const ta = document.getElementById(`case-note-input-${caseId}`);
+  const text = ta?.value?.trim();
+  if (!text) { toast('Type a note first.', 'error'); return; }
+  await addCaseNote(caseId, text);
+  if (ta) ta.value = '';
+}
+// Kept for any older onclick references that still call the old function.
 async function addNoteFromCaseModal(caseId) {
+  // Fallback to inline textarea if it exists on screen, else prompt.
+  const ta = document.getElementById(`case-note-input-${caseId}`);
+  if (ta) { ta.focus(); return; }
   const text = prompt('Add a note (what just happened on the case):');
   if (!text) return;
   await addCaseNote(caseId, text.trim());
@@ -4903,13 +4920,20 @@ function renderEvalNotes() {
   }).join('');
 }
 async function addCaseNoteFromEval() {
-  if (!currentEvalCaseId) { toast('Pick a case first.', 'error'); return; }
-  const txt = document.getElementById('eval-note-input').value.trim();
-  if (!txt) return;
-  await addCaseNote(currentEvalCaseId, txt);
-  document.getElementById('eval-note-input').value = '';
-  // Re-render so the new note is visible AND the manual-input context is refreshed
-  loadCaseForEval(currentEvalCaseId);
+  // Self-heal: if no case is currently loaded but the dropdown has one, use it.
+  let caseId = currentEvalCaseId;
+  if (!caseId) {
+    const sel = document.getElementById('eval-case-select');
+    caseId = sel?.value || '';
+    if (caseId) loadCaseForEval(caseId);
+  }
+  if (!caseId) { toast('Pick a case from the dropdown first.', 'error'); return; }
+  const ta = document.getElementById('eval-note-input');
+  const txt = (ta?.value || '').trim();
+  if (!txt) { toast('Type a note first.', 'error'); return; }
+  await addCaseNote(caseId, txt);
+  if (ta) ta.value = '';
+  loadCaseForEval(caseId);
 }
 async function addCaseNote(caseId, text) {
   const c = cases.find(x => x.id === caseId); if (!c) return;
