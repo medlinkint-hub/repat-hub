@@ -896,6 +896,11 @@ input.ie-filled, select.ie-filled, textarea.ie-filled {
     <span class="nav-icon">⬚</span><span>Generator</span>
   </div>
 
+  <div class="nav-section-label">Network</div>
+  <div class="nav-item" onclick="navTo('outreach')" id="nav-outreach">
+    <span class="nav-icon">✉</span><span>Outreach Emails</span>
+  </div>
+
   <div class="nav-section-label">System</div>
   <div class="nav-item" onclick="navTo('settings')" id="nav-settings">
     <span class="nav-icon">⚙</span><span>Settings</span>
@@ -1870,6 +1875,71 @@ The AI will provide:
             <div style="font-size:12px">Upload one or more medical documents and press Extract</div>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════ OUTREACH EMAILS ══════════════════════════════ -->
+  <div class="view" id="view-outreach">
+    <div class="page-header">
+      <h1>✉ Outreach Emails</h1>
+      <p>Generate professional business development emails — partnership invitations &amp; service offerings</p>
+    </div>
+
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-header"><h3>Select Email Type</h3></div>
+      <div class="doc-type-grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
+        <div class="doc-type-card active" onclick="selectOutreachType(this,'network')" id="ot-network">
+          <span class="dt-icon">🤝</span>
+          <div class="dt-name">Join HWA Network</div>
+          <div class="dt-desc">Invite TPA / assistance companies to become HWA network providers and serve HWA clients</div>
+        </div>
+        <div class="doc-type-card" onclick="selectOutreachType(this,'services')" id="ot-services">
+          <span class="dt-icon">🏥</span>
+          <div class="dt-name">Our Services in Greece &amp; Cyprus</div>
+          <div class="dt-desc">Offer HWA medical assistance services in Greece &amp; Cyprus to TPA, assistance &amp; insurance companies</div>
+        </div>
+      </div>
+
+      <div class="form-grid" style="margin-bottom:16px">
+        <div class="form-group">
+          <label>Recipient Company Name</label>
+          <input type="text" id="oe-company" placeholder="e.g. Europ Assistance Italia" oninput="clearOutreachOutput()"/>
+        </div>
+        <div class="form-group">
+          <label>Contact Person</label>
+          <input type="text" id="oe-contact" placeholder="e.g. Mr. Marco Rossi" oninput="clearOutreachOutput()"/>
+        </div>
+        <div class="form-group" id="oe-region-row">
+          <label>Recipient Region / Country <span style="font-size:11px;color:var(--text-dim)">— where they operate</span></label>
+          <input type="text" id="oe-region" placeholder="e.g. Italy, Northern Europe" oninput="clearOutreachOutput()"/>
+        </div>
+        <div class="form-group">
+          <label>Sender Name</label>
+          <input type="text" id="oe-sender" placeholder="e.g. Dr. Andreas Papadopoulos" oninput="clearOutreachOutput()"/>
+        </div>
+      </div>
+
+      <button class="btn btn-gold" onclick="generateOutreachEmail()" style="width:100%;justify-content:center">
+        ✉ Generate Email
+      </button>
+    </div>
+
+    <div class="card" id="oe-output-card" style="display:none">
+      <div class="card-header">
+        <h3>Generated Email</h3>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-ghost btn-sm" onclick="copyOutreachSubject()">📋 Copy Subject</button>
+          <button class="btn btn-primary btn-sm" onclick="copyOutreachEmail()">📋 Copy Full Email</button>
+        </div>
+      </div>
+      <div style="margin-bottom:12px">
+        <label style="font-size:11px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px">Subject</label>
+        <div id="oe-subject" style="margin-top:4px;padding:10px 14px;background:var(--surface-3);border:1px solid var(--border);border-radius:8px;font-weight:600;color:var(--hwa-navy);font-size:14px"></div>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px">Body</label>
+        <pre id="oe-body" style="margin-top:4px;padding:16px;background:var(--surface-3);border:1px solid var(--border);border-radius:8px;font-family:'Inter',sans-serif;font-size:13px;line-height:1.7;color:var(--text);white-space:pre-wrap;word-break:break-word;max-height:520px;overflow-y:auto"></pre>
       </div>
     </div>
   </div>
@@ -5672,6 +5742,136 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 document.addEventListener('DOMContentLoaded', init);
+
+// ══════════════════════════════════════════════════════════════════
+// OUTREACH EMAILS
+// ══════════════════════════════════════════════════════════════════
+let activeOutreachType = 'network';
+
+function selectOutreachType(el, type) {
+  document.querySelectorAll('#view-outreach .doc-type-card').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  activeOutreachType = type;
+  document.getElementById('oe-region-row').style.display = type === 'network' ? '' : 'none';
+  clearOutreachOutput();
+}
+
+function clearOutreachOutput() {
+  document.getElementById('oe-output-card').style.display = 'none';
+}
+
+function generateOutreachEmail() {
+  const company = (document.getElementById('oe-company').value || '').trim();
+  const contact = (document.getElementById('oe-contact').value || '').trim();
+  const region  = (document.getElementById('oe-region').value  || '').trim();
+  const sender  = (document.getElementById('oe-sender').value  || '').trim();
+
+  const co      = company || '[Company Name]';
+  const ct      = contact || 'Dear Sir/Madam';
+  const reg     = region  || '[your region]';
+  const snd     = sender  || 'HealthWatch Assistance Team';
+
+  let subject, body;
+
+  if (activeOutreachType === 'network') {
+    subject = `Partnership Opportunity – Join the HWA Provider Network | HealthWatch Assistance`;
+    body =
+`${ct},
+
+My name is ${snd}, and I am reaching out on behalf of HealthWatch Assistance S.A. (HWA), a specialist medical assistance and repatriation company headquartered in Thessaloniki, Greece.
+
+HWA provides 24/7 medical case management, medical escort coordination, air ambulance repatriation, and in-destination assistance to international travellers and expatriates — primarily for European and Middle Eastern insurance and assistance operators. Our operations are centred in Greece and Cyprus, from where we coordinate complex medical evacuations across Southern Europe and beyond.
+
+As we continue to grow our global provider network, we are reaching out to select, reputable assistance and TPA companies in ${reg} with an invitation to become an approved HWA Network Provider.
+
+What this means in practice:
+• When HWA clients travel to or require assistance in ${reg}, we would refer their cases directly to ${co} for local case management, hospital admission, guarantee of payment, and ground coordination.
+• You would act as our trusted local partner, ensuring our clients receive prompt, high-quality care on the ground.
+• Cases would be managed under agreed service level standards, with clear communication protocols and timely invoicing.
+
+In return, ${co} would benefit from:
+• A steady flow of referred international assistance cases
+• A long-term, structured partnership with a growing European TPA
+• Preferential collaboration on complex repatriation cases requiring multinational coordination
+
+We would very much welcome the opportunity to explore this further. I would be happy to arrange a brief introductory call at your convenience to discuss scope, volumes, and the terms of a potential service agreement.
+
+Please feel free to reach me directly at the contact details below.
+
+Warm regards,
+
+${snd}
+HealthWatch Assistance S.A.
+Thermi, Thessaloniki, Greece
+Tel: +30 2313 084 500
+Email: operations@healthwatch-assistance.com`;
+
+  } else {
+    subject = `Medical Assistance Services in Greece & Cyprus – HealthWatch Assistance S.A.`;
+    body =
+`${ct},
+
+I am writing to you on behalf of HealthWatch Assistance S.A. (HWA), a specialist medical assistance company based in Thessaloniki, Greece. We would like to introduce our services and explore a potential collaboration with ${co}.
+
+About HealthWatch Assistance
+HWA is a dedicated medical TPA and assistance provider operating 24/7 across Greece and Cyprus. We serve international insurance companies, global assistance operators, and travel insurers whose clients require medical support while visiting or residing in these destinations.
+
+Our Core Services in Greece & Cyprus:
+
+1. Medical Case Management
+   • 24/7 alarm centre coverage with multilingual coordinators
+   • Hospital admission facilitation and direct billing arrangements
+   • Guarantee of payment (GOP) issuance to Greek and Cypriot hospitals and clinics
+   • Medical progress monitoring and regular reporting to the insurer/assistance
+
+2. Repatriation & Medical Escorts
+   • Full coordination of commercial medical repatriations, including MEDIF completion, airline liaison, and escort provision
+   • Air ambulance repatriation for critical and intensive-care patients
+   • Stretcher case and WCHC passenger management on commercial flights
+
+3. Cost Containment & Audit
+   • Medical bill review and negotiation with Greek and Cypriot healthcare providers
+   • Pre-authorisation and cost-estimate services prior to planned procedures
+   • Fraud assessment and case audit for insurers
+
+4. On-Ground Support
+   • Home nursing and physiotherapy coordination post-discharge
+   • Medical equipment hire and pharmacy delivery
+   • Interpreter and medical escort services
+
+Why Partner with HWA?
+Greece and Cyprus together welcome over 35 million international visitors annually, generating significant volumes of travel insurance medical claims. Having a dedicated, experienced local partner ensures your policyholders receive timely, quality care — and that claims are managed cost-effectively.
+
+We currently work with several European and Middle Eastern insurers and assistance companies and would welcome the opportunity to extend the same service to ${co}.
+
+We would be delighted to schedule a call to present our capabilities in more detail, share our service level framework, and discuss how we can best support your operations in Greece and Cyprus.
+
+Warm regards,
+
+${snd}
+HealthWatch Assistance S.A.
+Thermi, Thessaloniki, Greece
+Tel: +30 2313 084 500
+Email: operations@healthwatch-assistance.com`;
+  }
+
+  document.getElementById('oe-subject').textContent = subject;
+  document.getElementById('oe-body').textContent = body;
+  document.getElementById('oe-output-card').style.display = 'block';
+  document.getElementById('oe-output-card').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function copyOutreachSubject() {
+  const txt = document.getElementById('oe-subject').textContent;
+  navigator.clipboard.writeText(txt).then(() => toast('Subject copied to clipboard.', 'success'));
+}
+
+function copyOutreachEmail() {
+  const subj = document.getElementById('oe-subject').textContent;
+  const body = document.getElementById('oe-body').textContent;
+  const full = `Subject: ${subj}\n\n${body}`;
+  navigator.clipboard.writeText(full).then(() => toast('Email copied to clipboard.', 'success'));
+}
 </script>
 </body>
 </html>
