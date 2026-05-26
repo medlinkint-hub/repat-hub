@@ -1798,7 +1798,8 @@ The AI will provide:
         <h3 data-i18n="doc_output">Document Output</h3>
         <div class="card-actions">
           <button class="btn btn-ghost btn-sm" onclick="copyDoc()">⎘ <span data-i18n="copy">Copy</span></button>
-          <button class="btn btn-ghost btn-sm" onclick="downloadDoc()">⬇ <span data-i18n="download">Download</span></button>
+          <button class="btn btn-ghost btn-sm" onclick="downloadDocAsTxt()" title="Plain text">⬇ .txt</button>
+          <button class="btn btn-primary btn-sm" onclick="downloadDoc()" title="Formatted PDF with HWA header">⬇ <span data-i18n="download">PDF</span></button>
         </div>
       </div>
       <div class="doc-output" id="doc-output" data-i18n="doc_waiting">Select a document type, load a case (or the AI will use the most recent), then press Generate.</div>
@@ -6416,17 +6417,65 @@ function viewSavedDoc(caseId, idx) {
 function closeDocViewer() {
   document.getElementById('doc-viewer-modal').style.display = 'none';
 }
-function downloadSavedDoc(caseId, idx) {
+async function downloadSavedDoc(caseId, idx) {
   const c = cases.find(x => x.id === caseId);
   if (!c || !c.documents || !c.documents[idx]) return;
   const d = c.documents[idx];
   const names = { ftf:'Fit-to-Fly', medif:'MEDIF', 'escort-brief':'Escort-Briefing', 'cost-estimate':'Cost-Estimate' };
-  const blob = new Blob([d.content], { type:'text/plain' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `HWA_${names[d.type]||d.type}_${caseId}_${d.generatedAt.slice(0,10)}.txt`;
-  a.click();
-  toast('Downloaded.', 'success');
+  const fileBase = `HWA_${names[d.type]||d.type}_${caseId}_${(d.generatedAt||'').slice(0,10)}`;
+  // Try PDF (formatted with HWA header); fall back to .txt if html2pdf isn't loaded.
+  if (typeof html2pdf === 'undefined') {
+    const blob = new Blob([d.content], { type:'text/plain' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = fileBase + '.txt'; a.click();
+    toast('Downloaded as text (PDF library not loaded).', 'info');
+    return;
+  }
+  const title = docTypeFullName(d.type);
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'font-family:-apple-system,BlinkMacSystemFont,Inter,Arial,sans-serif;color:#222;background:#fff;padding:0;line-height:1.55;font-size:12.5px';
+  wrap.innerHTML = `
+    <div style="border-bottom:2px solid #c0392b;padding-bottom:10px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:flex-end">
+      <div>
+        <div style="font-size:22px;font-weight:800;color:#0c1f3f">${escHtml(title)}${d.airline ? ' — ' + escHtml(d.airline) : ''}</div>
+        <div style="font-size:11px;color:#6b7c93;margin-top:2px">HealthWatch Assistance S.A.</div>
+      </div>
+      <div style="text-align:right;font-size:11px;color:#6b7c93">
+        <div>Case <strong style="color:#0c1f3f">${escHtml(c.id)}</strong></div>
+        <div>${escHtml((c.firstname||'') + ' ' + (c.lastname||'')).trim()}</div>
+        <div>Generated ${(d.generatedAt||'').slice(0,10)}</div>
+      </div>
+    </div>
+    <div class="doc-body">${mdToHtml(d.content)}</div>
+    <hr style="margin:22px 0 10px;border:none;border-top:1px solid #ccc">
+    <div style="font-size:10px;color:#6b7c93;line-height:1.6">HealthWatch Assistance S.A. · Thermi, Thessaloniki, Greece · www.healthwatch.gr · sami@healthwatch.gr</div>
+    <style>
+      .doc-body h1{font-size:18px;color:#0c1f3f;margin:18px 0 6px;font-weight:700;border-bottom:1px solid #ddd;padding-bottom:4px}
+      .doc-body h2{font-size:15px;color:#0c1f3f;margin:14px 0 5px;font-weight:700}
+      .doc-body h3{font-size:13px;color:#0c1f3f;margin:10px 0 4px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px}
+      .doc-body p{margin:5px 0}
+      .doc-body ul,.doc-body ol{margin:6px 0 6px 22px}
+      .doc-body li{margin:2px 0}
+      .doc-body strong{color:#0c1f3f}
+      .doc-body hr{border:none;border-top:1px solid #ddd;margin:14px 0}
+    </style>
+  `;
+  wrap.style.position = 'fixed'; wrap.style.left = '-9999px'; wrap.style.top = '0'; wrap.style.width = '180mm';
+  document.body.appendChild(wrap);
+  try {
+    const blob = await html2pdf().set({
+      margin:[12,12,16,12], filename: fileBase + '.pdf',
+      image:{type:'jpeg',quality:0.95},
+      html2canvas:{scale:2,useCORS:true,backgroundColor:'#ffffff'},
+      jsPDF:{unit:'mm',format:'a4',orientation:'portrait'},
+      pagebreak:{mode:['css','legacy']}
+    }).from(wrap).outputPdf('blob');
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = fileBase + '.pdf'; a.click();
+    toast('PDF downloaded.', 'success');
+  } catch(e) {
+    console.error(e); toast('PDF failed: ' + e.message, 'error');
+  } finally {
+    wrap.remove();
+  }
 }
 function downloadCurrentViewerDoc() {
   const m = document.getElementById('doc-viewer-modal');
@@ -6448,15 +6497,137 @@ function copyDoc() {
     .then(() => toast('Document copied.', 'success'));
 }
 
-function downloadDoc() {
+// ─── Generated document download — PDF (formatted) + .txt (raw) ───
+// Minimal markdown renderer so the AI's ## headers / **bold** / - bullets
+// turn into proper headings, bold and lists in the PDF.
+function mdToHtml(src) {
+  if (!src) return '';
+  const lines = src.replace(/\r\n/g, '\n').split('\n');
+  let out = []; let inUl = false, inOl = false;
+  const closeLists = () => {
+    if (inUl) { out.push('</ul>'); inUl = false; }
+    if (inOl) { out.push('</ol>'); inOl = false; }
+  };
+  const inline = s => escHtml(s)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/(?<!\*)\*([^*\n]+?)\*(?!\*)/g, '<em>$1</em>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+  for (const raw of lines) {
+    const l = raw.trimEnd();
+    if (!l.trim()) { closeLists(); continue; }
+    let m;
+    if ((m = l.match(/^###\s+(.*)/))) { closeLists(); out.push(`<h3>${inline(m[1])}</h3>`); continue; }
+    if ((m = l.match(/^##\s+(.*)/)))  { closeLists(); out.push(`<h2>${inline(m[1])}</h2>`); continue; }
+    if ((m = l.match(/^#\s+(.*)/)))   { closeLists(); out.push(`<h1>${inline(m[1])}</h1>`); continue; }
+    if ((m = l.match(/^\s*[-•*]\s+(.*)/))) {
+      if (!inUl) { closeLists(); out.push('<ul>'); inUl = true; }
+      out.push(`<li>${inline(m[1])}</li>`); continue;
+    }
+    if ((m = l.match(/^\s*\d+[.)]\s+(.*)/))) {
+      if (!inOl) { closeLists(); out.push('<ol>'); inOl = true; }
+      out.push(`<li>${inline(m[1])}</li>`); continue;
+    }
+    if (/^\s*---\s*$/.test(l)) { closeLists(); out.push('<hr>'); continue; }
+    closeLists();
+    out.push(`<p>${inline(l)}</p>`);
+  }
+  closeLists();
+  return out.join('\n');
+}
+
+function docTypeFullName(type) {
+  return ({
+    ftf: 'Fit-to-Fly Medical Certificate',
+    medif: 'Medical Information Form (MEDIF)',
+    'escort-brief': 'Medical Escort Briefing',
+    'cost-estimate': 'Medical Repatriation — Cost Estimate'
+  })[type] || 'HWA Document';
+}
+
+async function downloadDoc() {
+  if (typeof html2pdf === 'undefined') { downloadDocAsTxt(); return; }
+  const text = document.getElementById('doc-output').textContent;
+  if (!text || !text.trim()) { toast('Generate a document first.', 'error'); return; }
+  const names = { ftf:'Fit-to-Fly', medif:'MEDIF', 'escort-brief':'Escort-Briefing', 'cost-estimate':'Cost-Estimate' };
+  const fileBase = `HWA_${names[activeDocType]||activeDocType}_${new Date().toISOString().slice(0,10)}`;
+  // Build a printable HTML template with HWA branding around the rendered markdown.
+  const caseId = document.getElementById('doc-case-select')?.value || '';
+  const c = caseId ? cases.find(x => x.id === caseId) : null;
+  const title = docTypeFullName(activeDocType);
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'font-family:-apple-system,BlinkMacSystemFont,Inter,Arial,sans-serif;color:#222;background:#fff;padding:0;line-height:1.55;font-size:12.5px';
+  wrap.innerHTML = `
+    <div style="border-bottom:2px solid #c0392b;padding-bottom:10px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:flex-end">
+      <div>
+        <div style="font-size:22px;font-weight:800;color:#0c1f3f;letter-spacing:-0.3px">${escHtml(title)}</div>
+        <div style="font-size:11px;color:#6b7c93;margin-top:2px">HealthWatch Assistance S.A.</div>
+      </div>
+      <div style="text-align:right;font-size:11px;color:#6b7c93">
+        ${c ? `<div>Case <strong style="color:#0c1f3f">${escHtml(c.id)}</strong></div>` : ''}
+        ${c ? `<div>${escHtml((c.firstname||'') + ' ' + (c.lastname||'')).trim()}</div>` : ''}
+        <div>Issued ${new Date().toLocaleDateString()}</div>
+      </div>
+    </div>
+    <div class="doc-body">${mdToHtml(text)}</div>
+    <hr style="margin:22px 0 10px;border:none;border-top:1px solid #ccc">
+    <div style="font-size:10px;color:#6b7c93;line-height:1.6">
+      HealthWatch Assistance S.A. · Thermi, Thessaloniki, Greece · www.healthwatch.gr · sami@healthwatch.gr
+    </div>
+    <style>
+      .doc-body h1 { font-size:18px;color:#0c1f3f;margin:18px 0 6px;font-weight:700;border-bottom:1px solid #ddd;padding-bottom:4px }
+      .doc-body h2 { font-size:15px;color:#0c1f3f;margin:14px 0 5px;font-weight:700 }
+      .doc-body h3 { font-size:13px;color:#0c1f3f;margin:10px 0 4px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px }
+      .doc-body p { margin:5px 0;line-height:1.55 }
+      .doc-body ul, .doc-body ol { margin:6px 0 6px 22px;padding:0 }
+      .doc-body li { margin:2px 0;line-height:1.5 }
+      .doc-body strong { color:#0c1f3f }
+      .doc-body hr { border:none;border-top:1px solid #ddd;margin:14px 0 }
+      .doc-body code { background:#f3f3f3;padding:1px 5px;border-radius:3px;font-family:ui-monospace,Menlo,monospace;font-size:11px }
+      .doc-body table { border-collapse:collapse;margin:8px 0 }
+      .doc-body th, .doc-body td { border:1px solid #ddd;padding:5px 8px;font-size:12px;text-align:left }
+    </style>
+  `;
+  // Render off-screen so html2canvas can capture it cleanly.
+  wrap.style.position = 'fixed'; wrap.style.left = '-9999px'; wrap.style.top = '0'; wrap.style.width = '180mm';
+  document.body.appendChild(wrap);
+  try {
+    const blob = await html2pdf().set({
+      margin: [12, 12, 16, 12],
+      filename: fileBase + '.pdf',
+      image: { type:'jpeg', quality:0.95 },
+      html2canvas: { scale:2, useCORS:true, backgroundColor:'#ffffff' },
+      jsPDF: { unit:'mm', format:'a4', orientation:'portrait' },
+      pagebreak: { mode:['css','legacy'] }
+    }).from(wrap).outputPdf('blob');
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = fileBase + '.pdf';
+    link.click();
+    // Auto-attach to case (if any)
+    if (c && blob.size <= ATTACHMENT_MAX_BYTES) {
+      const file = new File([blob], fileBase + '.pdf', { type:'application/pdf' });
+      try { await uploadAttachment(c.id, file, names[activeDocType] || 'Generated document'); } catch(_) {}
+    }
+    toast('PDF downloaded' + (c ? ' & attached to case' : '') + '.', 'success');
+  } catch(e) {
+    console.error(e);
+    toast('PDF failed (' + e.message + ') — falling back to .txt', 'error');
+    downloadDocAsTxt();
+  } finally {
+    wrap.remove();
+  }
+}
+
+function downloadDocAsTxt() {
   const text = document.getElementById('doc-output').textContent;
   const names = { ftf:'Fit-to-Fly', medif:'MEDIF', 'escort-brief':'Escort-Briefing', 'cost-estimate':'Cost-Estimate' };
   const blob = new Blob([text], { type:'text/plain' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `HWA_${names[activeDocType]}_${new Date().toISOString().slice(0,10)}.txt`;
+  a.download = `HWA_${names[activeDocType]||activeDocType}_${new Date().toISOString().slice(0,10)}.txt`;
   a.click();
-  toast('Document downloaded.', 'success');
+  toast('Document downloaded as text.', 'success');
 }
 
 // ══════════════════════════════════════════════════════════════════
