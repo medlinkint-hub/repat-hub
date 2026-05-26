@@ -2075,6 +2075,7 @@ The AI will provide:
       <button class="btn btn-ghost btn-sm" onclick="docsFromModal()">⬚ Generate Docs</button>
       <button class="btn btn-ghost btn-sm" onclick="openAirlineMedifPicker()">📋 Airline MEDIF</button>
       <button class="btn btn-ghost btn-sm" onclick="openPreflightFromModal()">🩺 Pre-flight</button>
+      <button class="btn btn-ghost btn-sm" onclick="openQuoteFromModal()">💶 Quotation</button>
       <button class="btn btn-ghost btn-sm" onclick="openRepatReportFromModal()">📋 Repat Report</button>
       <button class="btn btn-danger btn-sm" onclick="deleteCase()">🗑 Delete</button>
     </div>
@@ -2265,6 +2266,129 @@ The AI will provide:
       <button class="btn btn-ghost btn-sm" onclick="inspectAirlineTemplate(currentMedifAirlineKey)" title="Show the field names from the official PDF (after upload)">🔍 Inspect template</button>
       <button class="btn btn-ghost btn-sm" onclick="emailMedifToAirline()">📨 Email to airline</button>
       <button class="btn btn-ghost btn-sm" onclick="closeMedif()" style="margin-left:auto">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Quotation Modal ─── -->
+<div class="modal-backdrop" id="quote-modal" style="display:none" onclick="if(event.target===this)closeQuote()">
+  <div class="modal-box rr-modal" style="max-width:980px;max-height:96vh">
+    <div class="modal-header rr-no-print">
+      <h2>💶 Quotation — <span id="q-case-label"></span></h2>
+      <button class="modal-close" onclick="closeQuote()">✕</button>
+    </div>
+
+    <div class="rr-no-print" style="background:rgba(38,86,166,0.06);border:1px solid rgba(38,86,166,0.2);border-radius:6px;padding:9px 13px;font-size:12px;color:var(--text-dim);margin-bottom:14px;line-height:1.5">
+      Formal cost quotation for the insurer / paying party. Pre-fills patient + route from the case. Add or edit line items, tap <strong>🧠 AI suggest items</strong> to draft a pricing breakdown based on the route + transport mode, then export as PDF.
+    </div>
+
+    <div id="quote-printable">
+      <!-- Header -->
+      <div style="border-bottom:2px solid #c0392b;padding-bottom:10px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:flex-start">
+        <div>
+          <div style="font-size:22px;font-weight:800;color:#0c1f3f;letter-spacing:-0.3px">QUOTATION</div>
+          <div style="font-size:12px;color:#6b7c93;margin-top:2px">Medical repatriation cost estimate</div>
+          <div style="margin-top:10px;font-size:11px;color:#0c1f3f">
+            <strong>HealthWatch Assistance S.A.</strong><br>
+            Thermi · 57001 Thessaloniki · Greece<br>
+            www.healthwatch.gr · sami@healthwatch.gr<br>
+            Tel: +30 …
+          </div>
+        </div>
+        <div style="text-align:right;font-size:11px;color:#0c1f3f">
+          <div>Quote # <strong id="q-print-no"></strong></div>
+          <div>Issued <strong id="q-print-issued"></strong></div>
+          <div>Valid until <strong id="q-print-valid"></strong></div>
+        </div>
+      </div>
+
+      <!-- Bill to + Re -->
+      <div class="rr-grid-2" style="margin-bottom:18px">
+        <div>
+          <div style="font-size:11px;color:#6b7c93;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;margin-bottom:4px">Quoted to</div>
+          <input id="q-to-name"    placeholder="Insurer / company name" style="width:100%;margin-bottom:4px">
+          <input id="q-to-address" placeholder="Address (street, city, country)" style="width:100%;margin-bottom:4px">
+          <input id="q-to-contact" placeholder="Contact person (optional)" style="width:100%;margin-bottom:4px">
+          <input id="q-to-email"   placeholder="Email" style="width:100%">
+        </div>
+        <div>
+          <div style="font-size:11px;color:#6b7c93;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;margin-bottom:4px">Re: Patient case</div>
+          <input id="q-patient" disabled style="width:100%;margin-bottom:4px">
+          <input id="q-case-id" disabled style="width:100%;margin-bottom:4px">
+          <input id="q-diagnosis" placeholder="Diagnosis" style="width:100%;margin-bottom:4px">
+          <input id="q-route"     placeholder="Origin → Destination" style="width:100%">
+        </div>
+      </div>
+      <div class="rr-grid-3" style="margin-bottom:16px">
+        <div class="rr-field"><label>Transport mode</label>
+          <select id="q-mode">
+            <option value="commercial">Commercial seat</option>
+            <option value="stretcher">Commercial stretcher</option>
+            <option value="air-amb">Air ambulance</option>
+            <option value="ground">Ground transport</option>
+          </select>
+        </div>
+        <div class="rr-field"><label>Proposed departure</label><input id="q-departure" type="date"></div>
+        <div class="rr-field"><label>Currency</label>
+          <select id="q-currency" onchange="recalcQuoteTotals()">
+            <option>EUR</option><option>USD</option><option>GBP</option><option>TRY</option><option>SAR</option><option>AED</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Line items table -->
+      <div style="margin-bottom:8px;display:flex;align-items:center;justify-content:space-between" class="rr-no-print">
+        <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;font-weight:600">Line items</div>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-ghost btn-sm" onclick="aiSuggestQuoteItems()" id="q-ai-btn">🧠 AI suggest items</button>
+          <button class="btn btn-ghost btn-sm" onclick="addQuoteLine()">+ Add line</button>
+        </div>
+      </div>
+      <table id="q-items-table" style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead>
+          <tr style="border-bottom:2px solid var(--hwa-red)">
+            <th style="text-align:left;padding:6px 4px;font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.4px">#</th>
+            <th style="text-align:left;padding:6px 4px;font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.4px">Description</th>
+            <th style="text-align:right;padding:6px 4px;font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.4px">Unit</th>
+            <th style="text-align:right;padding:6px 4px;font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.4px">Qty</th>
+            <th style="text-align:right;padding:6px 4px;font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.4px">Total</th>
+            <th class="rr-no-print"></th>
+          </tr>
+        </thead>
+        <tbody id="q-items-body"></tbody>
+        <tfoot>
+          <tr><td colspan="4" style="text-align:right;padding:8px 4px;font-size:11px;color:var(--text-dim)">Subtotal</td><td style="text-align:right;padding:8px 4px;font-weight:600" id="q-subtotal">—</td><td class="rr-no-print"></td></tr>
+          <tr><td colspan="4" style="text-align:right;padding:4px 4px;font-size:11px;color:var(--text-dim)">VAT (<input id="q-vat" type="number" step="0.1" value="0" style="width:50px;text-align:right" oninput="recalcQuoteTotals()">%)</td><td style="text-align:right;padding:4px 4px" id="q-vat-amt">—</td><td class="rr-no-print"></td></tr>
+          <tr style="border-top:2px solid var(--hwa-red)"><td colspan="4" style="text-align:right;padding:10px 4px;font-size:13px;font-weight:700;color:var(--hwa-navy);text-transform:uppercase;letter-spacing:0.5px">Total</td><td style="text-align:right;padding:10px 4px;font-size:15px;font-weight:800;color:var(--hwa-red)" id="q-total">—</td><td class="rr-no-print"></td></tr>
+        </tfoot>
+      </table>
+
+      <!-- Terms -->
+      <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border)">
+        <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:6px">Terms & conditions</div>
+        <textarea id="q-terms" rows="3" style="width:100%" placeholder="• Quotation valid for 30 days from issue date.
+• Final amount may vary depending on actual flight bookings and patient stability.
+• Payment terms: 30 days net upon repatriation completion.
+• Cancellation policy: per HWA standard terms.
+• All amounts exclude VAT unless stated."></textarea>
+      </div>
+
+      <!-- Signature -->
+      <div style="margin-top:16px;display:flex;gap:30px;align-items:flex-end">
+        <div style="flex:1;border-bottom:1px solid #888;height:42px"><span style="font-size:10px;color:#888">Authorised signatory</span></div>
+        <div class="rr-field" style="width:160px"><label>Date</label><input id="q-sig-date" type="date"></div>
+      </div>
+      <div style="margin-top:10px;font-size:11px;color:#6b7c93;line-height:1.6">
+        For acceptance, please return a signed copy to <span id="q-print-email">sami@healthwatch.gr</span> referencing case <span id="q-print-caseid"></span>.
+      </div>
+    </div>
+
+    <div class="rr-no-print" style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap;border-top:1px solid var(--border);padding-top:16px;align-items:center">
+      <div id="q-status" style="font-size:11px;color:var(--text-dim);flex:1"></div>
+      <button class="btn btn-ghost   btn-sm" onclick="saveQuoteDraft()" id="q-save-btn">💾 Save</button>
+      <button class="btn btn-primary btn-sm" onclick="generateQuotePdf()" id="q-pdf-btn">📄 PDF</button>
+      <button class="btn btn-ghost   btn-sm" onclick="emailQuoteToInsurer()" id="q-email-btn">📨 Email to insurer</button>
+      <button class="btn btn-ghost   btn-sm" onclick="closeQuote()">Close</button>
     </div>
   </div>
 </div>
@@ -2740,6 +2864,7 @@ Avg flow: 3 L/min"></textarea>
 
     <div class="rr-no-print" style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap;border-top:1px solid var(--border);padding-top:16px">
       <button class="btn btn-primary btn-sm" onclick="saveRepatReport()">💾 Save Report</button>
+      <button class="btn btn-ghost btn-sm" onclick="aiGenerateRepatReport()" id="rr-ai-btn">🧠 AI draft from case</button>
       <button class="btn btn-ghost btn-sm" onclick="printRepatReport()">🖨 Print / Save as PDF</button>
       <button class="btn btn-ghost btn-sm" onclick="closeRepatReport()" style="margin-left:auto">Close</button>
     </div>
@@ -3572,6 +3697,258 @@ www.healthwatch.gr · sami@healthwatch.gr
 [HWA case ${c?.id||''}]`);
   window.location.href = `mailto:${a.medicalEmail}?subject=${subj}&body=${body}`;
   toast('Opening your email client — attach the downloaded MEDIF PDF before sending.', 'info');
+}
+
+// ─── Quotation ───
+let currentQuoteCaseId = null;
+function openQuoteFromModal() {
+  if (!currentModalCaseId) return;
+  const id = currentModalCaseId;
+  closeCaseModal();
+  openQuoteForm(id);
+}
+function quoteCurrencySymbol(code) {
+  return ({EUR:'€',USD:'$',GBP:'£',TRY:'₺',SAR:'SAR ',AED:'AED '}[code]) || code + ' ';
+}
+function openQuoteForm(caseId) {
+  const c = cases.find(x => x.id === caseId); if (!c) return;
+  currentQuoteCaseId = caseId;
+  const q = c.quote || {};
+  const today = new Date().toISOString().slice(0,10);
+  const validUntil = new Date(Date.now() + 30*86400000).toISOString().slice(0,10);
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v ?? ''; };
+
+  document.getElementById('q-case-label').textContent = `${c.id} · ${c.firstname||''} ${c.lastname||''}`.trim();
+  const quoteNo = q.number || ('QT-' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '-' + c.id.replace(/[^A-Za-z0-9]/g,'').slice(-4));
+  set('q-print-no',     quoteNo);
+  set('q-print-issued', q.issued || today);
+  set('q-print-valid',  q.validUntil || validUntil);
+  document.getElementById('q-print-caseid').textContent = c.id;
+
+  // Bill-to defaults from case (insurer)
+  set('q-to-name',    q.toName    ?? c.insurer);
+  set('q-to-address', q.toAddress ?? '');
+  set('q-to-contact', q.toContact ?? '');
+  set('q-to-email',   q.toEmail   ?? '');
+  // Re: patient
+  set('q-patient',    `${c.firstname||''} ${c.lastname||''}`.trim());
+  set('q-case-id',    c.id);
+  set('q-diagnosis',  q.diagnosis ?? c.diagnosis);
+  set('q-route',      q.route     ?? `${c.originCity||c.originIata||'?'} → ${c.destCity||c.destIata||'?'}`);
+  set('q-mode',       q.mode      ?? (c.transport === 'air-amb' ? 'air-amb' : c.mobility === 'stretcher' ? 'stretcher' : 'commercial'));
+  set('q-departure',  q.departure ?? c.flightOutDate);
+  set('q-currency',   q.currency  ?? 'EUR');
+  set('q-vat',        q.vat       ?? '0');
+  set('q-terms',      q.terms     ?? `• Quotation valid for 30 days from issue date.
+• Final amount may vary depending on actual flight bookings and patient stability.
+• Payment terms: 30 days net upon repatriation completion.
+• Cancellation policy: per HWA standard terms.
+• All amounts exclude VAT unless stated.`);
+  set('q-sig-date',   q.sigDate   ?? today);
+
+  // Render line items
+  quoteItems = Array.isArray(q.items) && q.items.length ? q.items.slice() : defaultQuoteItems(c);
+  renderQuoteLines();
+  recalcQuoteTotals();
+  document.getElementById('quote-modal').style.display = 'flex';
+}
+function closeQuote() {
+  document.getElementById('quote-modal').style.display = 'none';
+  currentQuoteCaseId = null;
+}
+let quoteItems = [];
+function defaultQuoteItems(c) {
+  // Sensible starter rows based on the case's transport mode. The user adjusts.
+  const mode = c.transport === 'air-amb' ? 'air-amb' : (c.mobility === 'stretcher' ? 'stretcher' : 'commercial');
+  if (mode === 'air-amb') return [
+    { desc:'Air ambulance — light jet, point-to-point',         unit:18000, qty:1 },
+    { desc:'Medical crew (physician + nurse, 24h)',             unit:2400,  qty:1 },
+    { desc:'Ground ambulance — origin',                         unit:450,   qty:1 },
+    { desc:'Ground ambulance — destination',                    unit:450,   qty:1 },
+    { desc:'Coordination & documentation fee',                  unit:500,   qty:1 }
+  ];
+  if (mode === 'stretcher') return [
+    { desc:'Commercial stretcher (9 seats blocked)',            unit:9500,  qty:1 },
+    { desc:'Medical escort (RN) — full mission',                unit:1800,  qty:1 },
+    { desc:'Medical escort travel (outbound + return)',         unit:850,   qty:1 },
+    { desc:'Ground ambulance — origin',                         unit:380,   qty:1 },
+    { desc:'Ground ambulance — destination',                    unit:380,   qty:1 },
+    { desc:'O₂ + medical kit',                                  unit:220,   qty:1 },
+    { desc:'Coordination & documentation fee',                  unit:350,   qty:1 }
+  ];
+  return [
+    { desc:'Commercial seat — patient',                         unit:480,   qty:1 },
+    { desc:'Commercial seat — medical escort',                  unit:480,   qty:1 },
+    { desc:'Medical escort (RN) — daily rate',                  unit:480,   qty:1 },
+    { desc:'Ground ambulance — origin',                         unit:280,   qty:1 },
+    { desc:'Ground ambulance — destination',                    unit:280,   qty:1 },
+    { desc:'Medical kit + supplies',                            unit:140,   qty:1 },
+    { desc:'Coordination & documentation fee',                  unit:280,   qty:1 }
+  ];
+}
+function renderQuoteLines() {
+  const tbody = document.getElementById('q-items-body');
+  tbody.innerHTML = quoteItems.map((it, i) => `
+    <tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:5px 4px;color:var(--text-dim);font-size:12px">${i+1}</td>
+      <td style="padding:5px 4px"><input data-idx="${i}" data-k="desc" value="${escAttr(it.desc||'')}" oninput="onQuoteCell(this)" style="width:100%"></td>
+      <td style="padding:5px 4px"><input data-idx="${i}" data-k="unit" value="${it.unit||0}" type="number" step="0.01" oninput="onQuoteCell(this)" style="width:90px;text-align:right"></td>
+      <td style="padding:5px 4px"><input data-idx="${i}" data-k="qty"  value="${it.qty||1}"  type="number" step="0.01" oninput="onQuoteCell(this)" style="width:70px;text-align:right"></td>
+      <td style="padding:5px 4px;text-align:right;font-weight:600" data-row-total="${i}">—</td>
+      <td class="rr-no-print" style="padding:5px 4px"><button class="btn btn-danger btn-sm" onclick="removeQuoteLine(${i})" style="padding:2px 7px;font-size:11px">✕</button></td>
+    </tr>
+  `).join('');
+}
+function escAttr(s) { return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;'); }
+function onQuoteCell(input) {
+  const idx = parseInt(input.dataset.idx, 10);
+  const k = input.dataset.k;
+  if (isNaN(idx) || !quoteItems[idx]) return;
+  quoteItems[idx][k] = (k === 'desc') ? input.value : parseFloat(input.value || 0) || 0;
+  recalcQuoteTotals();
+}
+function addQuoteLine() {
+  quoteItems.push({ desc:'', unit:0, qty:1 });
+  renderQuoteLines();
+  recalcQuoteTotals();
+}
+function removeQuoteLine(idx) {
+  quoteItems.splice(idx, 1);
+  renderQuoteLines();
+  recalcQuoteTotals();
+}
+function recalcQuoteTotals() {
+  const cur = document.getElementById('q-currency')?.value || 'EUR';
+  const sym = quoteCurrencySymbol(cur);
+  let subtotal = 0;
+  quoteItems.forEach((it, i) => {
+    const t = (parseFloat(it.unit)||0) * (parseFloat(it.qty)||0);
+    subtotal += t;
+    const cell = document.querySelector(`[data-row-total="${i}"]`);
+    if (cell) cell.textContent = t ? sym + t.toFixed(2) : '—';
+  });
+  const vatPct = parseFloat(document.getElementById('q-vat')?.value || 0) || 0;
+  const vatAmt = subtotal * vatPct / 100;
+  const total = subtotal + vatAmt;
+  document.getElementById('q-subtotal').textContent = subtotal ? sym + subtotal.toFixed(2) : '—';
+  document.getElementById('q-vat-amt').textContent  = vatAmt ? sym + vatAmt.toFixed(2) : '—';
+  document.getElementById('q-total').textContent    = total ? sym + total.toFixed(2) : '—';
+}
+function collectQuoteData() {
+  const v = id => document.getElementById(id)?.value || '';
+  return {
+    number: v('q-print-no'), issued: v('q-print-issued'), validUntil: v('q-print-valid'),
+    toName: v('q-to-name'), toAddress: v('q-to-address'), toContact: v('q-to-contact'), toEmail: v('q-to-email'),
+    diagnosis: v('q-diagnosis'), route: v('q-route'),
+    mode: v('q-mode'), departure: v('q-departure'), currency: v('q-currency'),
+    items: quoteItems.slice(),
+    vat: parseFloat(v('q-vat'))||0, terms: v('q-terms'), sigDate: v('q-sig-date'),
+    updatedAt: new Date().toISOString()
+  };
+}
+async function saveQuoteDraft() {
+  if (!currentQuoteCaseId) return;
+  const c = cases.find(x => x.id === currentQuoteCaseId); if (!c) return;
+  c.quote = collectQuoteData();
+  await persistCase(c);
+  document.getElementById('q-status').textContent = 'Saved at ' + new Date().toLocaleTimeString();
+  toast('Quotation draft saved.', 'success');
+  refreshCaseModalIfOpen();
+}
+async function generateQuotePdf() {
+  if (!currentQuoteCaseId) return;
+  if (typeof html2pdf === 'undefined') { toast('PDF library still loading.', 'error'); return; }
+  await saveQuoteDraft();
+  const c = cases.find(x => x.id === currentQuoteCaseId);
+  const btn = document.getElementById('q-pdf-btn');
+  btn.disabled = true; const old = btn.textContent; btn.textContent = 'Generating…';
+  try {
+    const filename = `Quote_${c.id}_${new Date().toISOString().slice(0,10)}.pdf`;
+    const blob = await html2pdf().set({
+      margin:[10,10,14,10], filename,
+      image:{ type:'jpeg', quality:0.95 },
+      html2canvas:{ scale:2, useCORS:true, backgroundColor:'#ffffff' },
+      jsPDF:{ unit:'mm', format:'a4', orientation:'portrait' },
+      pagebreak:{ mode:['css','legacy'] }
+    }).from(document.getElementById('quote-printable')).outputPdf('blob');
+
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob); link.download = filename; link.click();
+
+    if (blob.size <= ATTACHMENT_MAX_BYTES) {
+      const file = new File([blob], filename, { type:'application/pdf' });
+      await uploadAttachment(c.id, file, 'Quotation');
+    }
+    toast('Quotation PDF generated & attached to case.', 'success');
+  } catch(e) {
+    console.error(e); toast('PDF failed: ' + e.message, 'error');
+  }
+  btn.disabled = false; btn.textContent = old;
+}
+function emailQuoteToInsurer() {
+  if (!currentQuoteCaseId) return;
+  const c = cases.find(x => x.id === currentQuoteCaseId);
+  const to = document.getElementById('q-to-email').value.trim();
+  if (!to) { toast('Add the recipient email in "Quoted to" first.', 'error'); return; }
+  const total = document.getElementById('q-total').textContent;
+  const subj = encodeURIComponent(`Medical repatriation quotation — Case ${c.id} — ${c.firstname||''} ${c.lastname||''}`);
+  const body = encodeURIComponent(`Dear ${document.getElementById('q-to-name').value || 'Sir/Madam'},
+
+Please find attached our quotation for the medical repatriation of:
+
+Patient: ${c.firstname||''} ${c.lastname||''} (Case ${c.id})
+Diagnosis: ${c.diagnosis||'—'}
+Route: ${document.getElementById('q-route').value}
+Mode: ${document.getElementById('q-mode').value}
+Departure (proposed): ${document.getElementById('q-departure').value || 'TBC'}
+
+Total estimate: ${total}
+
+Quote # ${document.getElementById('q-print-no').textContent}
+Valid until: ${document.getElementById('q-print-valid').textContent}
+
+Kindly confirm acceptance so we may proceed with the repatriation arrangements.
+
+Kind regards,
+HealthWatch Assistance S.A.
+Thermi · Thessaloniki · Greece
+www.healthwatch.gr · sami@healthwatch.gr`);
+  window.location.href = `mailto:${to}?subject=${subj}&body=${body}`;
+  toast('Opening your email client — attach the downloaded quotation PDF before sending.', 'info');
+}
+async function aiSuggestQuoteItems() {
+  if (!currentQuoteCaseId) return;
+  const c = cases.find(x => x.id === currentQuoteCaseId); if (!c) return;
+  const key = getAnthropicKey();
+  if (!key) { toast('Set your Anthropic API key in Settings first.', 'error'); return; }
+  const btn = document.getElementById('q-ai-btn');
+  btn.disabled = true; const old = btn.textContent; btn.textContent = '🧠 Thinking…';
+  try {
+    const mode = document.getElementById('q-mode').value;
+    const currency = document.getElementById('q-currency').value;
+    const route = document.getElementById('q-route').value;
+    const summary = buildFullCaseContext(c);
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'x-api-key':key, 'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true' },
+      body: JSON.stringify({
+        model:'claude-sonnet-4-20250514', max_tokens:900,
+        system:`You are a senior medical-repatriation pricing analyst at HealthWatch Assistance. Given a case and the chosen transport mode, propose an itemised quotation: realistic line items with unit price (in ${currency}) and quantity. Use industry-realistic mid-market pricing. Cover: transport (tickets / stretcher block / air ambulance), medical escort fees + travel, ground ambulance both ends, O₂ + medical kit, coordination & documentation, and hotel/equipment only if the case data indicates a need. Return ONLY a JSON array of objects with keys "desc" (≤60 chars), "unit" (number), "qty" (number). No preamble, no markdown.`,
+        messages:[{ role:'user', content: `Transport mode: ${mode}\nRoute: ${route}\nCurrency: ${currency}\n\nCASE STATE:\n${summary}` }]
+      })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+    let raw = data.content[0].text.trim().replace(/^```json?\s*/i,'').replace(/```\s*$/,'').trim();
+    const items = JSON.parse(raw);
+    if (!Array.isArray(items)) throw new Error('Bad shape');
+    quoteItems = items.map(it => ({ desc: String(it.desc||''), unit: parseFloat(it.unit)||0, qty: parseFloat(it.qty)||1 }));
+    renderQuoteLines(); recalcQuoteTotals();
+    toast(`AI proposed ${items.length} line items — review and adjust.`, 'success');
+  } catch(e) {
+    toast('AI suggestion failed: ' + e.message, 'error');
+  }
+  btn.disabled = false; btn.textContent = old;
 }
 
 // ─── Pre-Flight Assessment ───
@@ -4757,7 +5134,8 @@ function renderSavedDocsBlock(c) {
   const docs = Array.isArray(c.documents) ? c.documents : [];
   const hasReport = !!c.repatReport;
   const hasPreflight = !!c.preflight;
-  if (!docs.length && !hasReport && !hasPreflight) return '';
+  const hasQuote = !!c.quote;
+  if (!docs.length && !hasReport && !hasPreflight && !hasQuote) return '';
   const names = { ftf:'Fit-to-Fly', medif:'MEDIF', 'escort-brief':'Escort Briefing', 'cost-estimate':'Cost Estimate' };
   const rows = docs.map((d, idx) => `
     <div style="display:flex;align-items:center;gap:10px;padding:9px 11px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px">
@@ -4800,10 +5178,25 @@ function renderSavedDocsBlock(c) {
       <button class="btn btn-ghost btn-sm" onclick="openPreflight('${c.id}')" title="Open">↗ Open</button>
     </div>
   ` : '';
+  const quoteRow = hasQuote ? (() => {
+    const q = c.quote;
+    const cur = quoteCurrencySymbol(q.currency || 'EUR');
+    const subtotal = (q.items||[]).reduce((s,it) => s + (parseFloat(it.unit)||0)*(parseFloat(it.qty)||0), 0);
+    const total = subtotal * (1 + (parseFloat(q.vat)||0)/100);
+    return `
+      <div style="display:flex;align-items:center;gap:10px;padding:9px 11px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600;color:var(--text)">💶 Quotation${q.number ? ' · ' + escHtml(q.number) : ''}</div>
+          <div style="font-size:11px;color:var(--text-dim)">Total <strong style="color:var(--hwa-red)">${cur}${total.toFixed(2)}</strong> · ${escHtml(q.toName||'—')} · valid until ${q.validUntil||'?'}</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="openQuoteForm('${c.id}')" title="Open">↗ Open</button>
+      </div>
+    `;
+  })() : '';
   return `
     <div style="margin-top:18px">
-      <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:8px">Saved documents (${docs.length}${hasReport ? ' + report' : ''}${hasPreflight ? ' + pre-flight' : ''})</div>
-      <div style="display:flex;flex-direction:column;gap:6px">${preflightRow}${rows}${reportRow}</div>
+      <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:8px">Saved documents (${docs.length}${hasReport ? ' + report' : ''}${hasPreflight ? ' + pre-flight' : ''}${hasQuote ? ' + quote' : ''})</div>
+      <div style="display:flex;flex-direction:column;gap:6px">${preflightRow}${quoteRow}${rows}${reportRow}</div>
     </div>
   `;
 }
@@ -4980,6 +5373,85 @@ async function saveRepatReport() {
   await persistCase(c);
   toast('Repatriation report saved.', 'success');
   refreshCaseModalIfOpen();
+}
+
+async function aiGenerateRepatReport() {
+  if (!currentReportCaseId) return;
+  const c = cases.find(x => x.id === currentReportCaseId); if (!c) return;
+  const key = getAnthropicKey();
+  if (!key) { toast('Set your Anthropic API key in Settings first.', 'error'); return; }
+  const btn = document.getElementById('rr-ai-btn');
+  btn.disabled = true; const old = btn.textContent; btn.textContent = '🧠 Drafting…';
+  try {
+    // Make sure attachments are loaded so the AI can read them.
+    if (c.attachments === undefined && typeof db !== 'undefined' && db) await loadAttachments(c.id);
+    const ctx = buildFullCaseContext(c);
+    const messageContent = [];
+    const atts = (c.attachments||[]);
+    let bytes = 0; const BUDGET = 600 * 1024;
+    for (const a of atts) {
+      if (!a.base64) continue;
+      const sz = a.size||0;
+      const isImg = (a.type||'').startsWith('image/');
+      const isPdf = a.type === 'application/pdf' || /\.pdf$/i.test(a.name);
+      if (bytes + sz > BUDGET) continue;
+      if (isImg) { messageContent.push({type:'image',source:{type:'base64',media_type:a.type,data:a.base64}}); bytes += sz; }
+      else if (isPdf) { messageContent.push({type:'document',source:{type:'base64',media_type:'application/pdf',data:a.base64}}); bytes += sz; }
+    }
+    messageContent.push({ type:'text', text:
+`Draft the post-mission Repatriation Report for this case using the case state, pre-flight assessment, and attachments below. Return ONLY a JSON object with these exact keys (string values, '' if unknown):
+
+{
+  "elapsed":"", "airline":"", "flights":"",
+  "escort":"", "equipment":"", "meds":"",
+  "vsBp":"", "vsHr":"", "vsSpo2":"", "vsTemp":"", "vsGcs":"", "vsRr":"",
+  "veBp":"", "veHr":"", "veSpo2":"", "veTemp":"", "veGcs":"", "veRr":"",
+  "inflight":"", "o2use":"",
+  "gndOut":"", "gndIn":"", "flightActual":"",
+  "recvFac":"", "recvDoc":"",
+  "outcome":"", "handover":"", "deviation":"", "devNotes":"",
+  "issues":"", "recs":""
+}
+
+Rules:
+- outcome: one of "Improved" / "Stable / unchanged" / "Deteriorated" / "Deceased during transport"
+- handover: "Yes" / "Partial" / "No"
+- deviation: "None" / "Minor" / "Major"
+- Vital values use the existing format on the case (start vitals from intake, end vitals from pre-flight handover if available, else from pre-flight + your best clinical estimate).
+- inflight: 1–3 sentence narrative based on attachments + notes
+- equipment + meds: comma-separated lists
+- Return ONLY the JSON, no markdown, no preamble.
+
+CASE STATE:
+${ctx}` });
+
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'x-api-key':key, 'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true' },
+      body: JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:1500, messages:[{ role:'user', content: messageContent }] })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+    let raw = data.content[0].text.trim().replace(/^```json?\s*/i,'').replace(/```\s*$/,'').trim();
+    const d = JSON.parse(raw);
+    // Apply to form fields without clobbering anything the user already filled.
+    const setIf = (id, val) => { const el = document.getElementById(id); if (el && val && !el.value) el.value = val; };
+    setIf('rr-elapsed',d.elapsed); setIf('rr-airline',d.airline); setIf('rr-flights',d.flights);
+    setIf('rr-escort',d.escort); setIf('rr-equipment',d.equipment); setIf('rr-meds',d.meds);
+    setIf('rr-vs-bp',d.vsBp); setIf('rr-vs-hr',d.vsHr); setIf('rr-vs-spo2',d.vsSpo2);
+    setIf('rr-vs-temp',d.vsTemp); setIf('rr-vs-gcs',d.vsGcs); setIf('rr-vs-rr',d.vsRr);
+    setIf('rr-ve-bp',d.veBp); setIf('rr-ve-hr',d.veHr); setIf('rr-ve-spo2',d.veSpo2);
+    setIf('rr-ve-temp',d.veTemp); setIf('rr-ve-gcs',d.veGcs); setIf('rr-ve-rr',d.veRr);
+    setIf('rr-inflight',d.inflight); setIf('rr-o2use',d.o2use);
+    setIf('rr-gnd-out',d.gndOut); setIf('rr-gnd-in',d.gndIn); setIf('rr-flight-actual',d.flightActual);
+    setIf('rr-recv-fac',d.recvFac); setIf('rr-recv-doc',d.recvDoc);
+    setIf('rr-outcome',d.outcome); setIf('rr-handover',d.handover); setIf('rr-deviation',d.deviation); setIf('rr-dev-notes',d.devNotes);
+    setIf('rr-issues',d.issues); setIf('rr-recs',d.recs);
+    toast('AI draft applied — review and edit any field, then Save Report.', 'success');
+  } catch(e) {
+    console.error(e); toast('AI draft failed: ' + e.message, 'error');
+  }
+  btn.disabled = false; btn.textContent = old;
 }
 
 function printRepatReport() {
