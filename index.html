@@ -1758,16 +1758,17 @@ The AI will provide:
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px">
           <div>
             <div style="font-size:13px;font-weight:600;color:var(--text)">Cost breakdown</div>
-            <div style="font-size:11px;color:var(--text-dim);margin-top:2px">Enter your own amounts. The AI will use these exact numbers in the generated estimate instead of guessing.</div>
+            <div style="font-size:11px;color:var(--text-dim);margin-top:2px">The AI will use these exact numbers in the generated estimate. Edit any row; or open the Quotation to keep both in sync.</div>
           </div>
-          <div style="display:flex;gap:8px;align-items:center">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <select id="doc-cost-currency" onchange="recalcDocCostTotal()" style="padding:6px 10px;font-size:12px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text)">
               <option>EUR</option><option>USD</option><option>GBP</option><option>TRY</option><option>SAR</option><option>AED</option>
             </select>
             <button class="btn btn-ghost btn-sm" type="button" onclick="addDocCostLine()">+ Add line</button>
-            <button class="btn btn-ghost btn-sm" type="button" onclick="resetDocCostLines()">↻ Reset</button>
+            <button class="btn btn-ghost btn-sm" type="button" onclick="resetDocCostLines()" title="Reload from this case's saved Quotation">↻ Sync from Quotation</button>
           </div>
         </div>
+        <div id="doc-cost-source" style="font-size:11px;padding:5px 10px;border-radius:4px;border:1px solid transparent;margin-bottom:8px;display:inline-block"></div>
         <table style="width:100%;border-collapse:collapse;font-size:12px">
           <thead>
             <tr style="border-bottom:1px solid var(--border)">
@@ -4150,16 +4151,14 @@ function selectTransport(el, mode) {
 function selectDocType(el, type) {
   document.querySelectorAll('.doc-type-card').forEach(c => c.classList.remove('active'));
   el.classList.add('active'); activeDocType = type;
-  // Airline picker — only for MEDIF
   const air = document.getElementById('doc-airline-row');
   if (air) air.style.display = (type === 'medif') ? 'block' : 'none';
-  // Cost breakdown editor — only for Cost Estimate. Lazy-init the rows on first show.
   const cost = document.getElementById('doc-cost-row');
   if (cost) {
     cost.style.display = (type === 'cost-estimate') ? 'block' : 'none';
-    if (type === 'cost-estimate' && (!docCostLines || !docCostLines.length)) {
-      resetDocCostLines();
-    }
+    // Always re-sync on entering Cost Estimate mode so the breakdown reflects
+    // the currently-selected case's saved Quotation (single source of truth).
+    if (type === 'cost-estimate') resetDocCostLines();
   }
 }
 
@@ -4179,19 +4178,35 @@ function defaultDocCostLines(c) {
 function resetDocCostLines() {
   const caseId = document.getElementById('doc-case-select')?.value;
   const c = caseId ? cases.find(x => x.id === caseId) : null;
-  // Reuse the most recent saved quote on the case if there is one — gives the user
-  // a sensible starting point that already matches their pricing for this case.
+  let source;
   if (c?.quote?.items?.length) {
     docCostLines = c.quote.items.map(it => ({
       desc: it.desc, amt: (parseFloat(it.unit)||0) * (parseFloat(it.qty)||0)
     }));
     const cur = document.getElementById('doc-cost-currency');
     if (cur && c.quote.currency) cur.value = c.quote.currency;
-  } else {
+    source = { kind:'quote', label:`📋 Synced from Quotation ${c.quote.number || ''}`.trim(), caseId };
+  } else if (c) {
     docCostLines = defaultDocCostLines(c);
+    source = { kind:'defaults', label:'⚠ Using HWA defaults — no Quotation saved yet for this case', caseId };
+  } else {
+    docCostLines = defaultDocCostLines(null);
+    source = { kind:'defaults-no-case', label:'⚠ No case selected — using generic defaults', caseId:null };
   }
   renderDocCostLines();
   recalcDocCostTotal();
+  renderDocCostSource(source);
+}
+function renderDocCostSource(source) {
+  const el = document.getElementById('doc-cost-source');
+  if (!el) return;
+  const colour = source.kind === 'quote' ? '#1e7d44' : '#946800';
+  const bg     = source.kind === 'quote' ? 'rgba(39,174,96,0.10)' : 'rgba(241,196,15,0.15)';
+  const link   = (source.kind === 'quote' && source.caseId)
+    ? ` · <a href="#" onclick="event.preventDefault(); openQuoteForm('${source.caseId}')" style="color:${colour};text-decoration:underline">Open Quotation ↗</a>`
+    : '';
+  el.style.background = bg; el.style.color = colour; el.style.borderColor = bg.replace('0.10','0.4').replace('0.15','0.4');
+  el.innerHTML = `${escHtml(source.label)}${link}`;
 }
 function renderDocCostLines() {
   const tbody = document.getElementById('doc-cost-body');
@@ -6311,7 +6326,9 @@ function findNearestEscort() {
 // DOCUMENT GENERATOR
 // ══════════════════════════════════════════════════════════════════
 function loadCaseForDoc(id) {
-  // Pre-fills from case data — doc generator will use it
+  // If we're in Cost Estimate mode, re-sync the breakdown from the newly-
+  // selected case's saved Quotation so the two stay consistent.
+  if (activeDocType === 'cost-estimate') resetDocCostLines();
 }
 
 async function generateDocument() {
