@@ -4165,15 +4165,13 @@ function selectDocType(el, type) {
 // ─── Cost-Estimate breakdown editor (in the AI Document Generator) ───
 let docCostLines = [];
 function defaultDocCostLines(c) {
-  // Sensible starter rows; user adjusts amounts. Pulls case currency hint if known.
-  return [
-    { desc:'Medical escort fees (RN, full mission)',                     amt: 1800 },
-    { desc:'Airline tickets / stretcher block / air ambulance',          amt: 5000 },
-    { desc:'Ground transfers (origin + destination)',                    amt:  600 },
-    { desc:'Medical equipment & O₂',                                     amt:  220 },
-    { desc:'Hospital pre-clearance & medical coordination',              amt:  350 },
-    { desc:'Documentation & administration',                             amt:  150 }
-  ];
+  // Single source of truth: derive from defaultQuoteItems so the Quotation and
+  // the Cost-Estimate breakdown share the EXACT same titles, the EXACT same
+  // amounts, and the EXACT same number of rows when nothing has been saved yet.
+  return defaultQuoteItems(c).map(it => ({
+    desc: it.desc,
+    amt:  (parseFloat(it.unit)||0) * (parseFloat(it.qty)||0)
+  }));
 }
 function resetDocCostLines() {
   const caseId = document.getElementById('doc-case-select')?.value;
@@ -4185,13 +4183,16 @@ function resetDocCostLines() {
     }));
     const cur = document.getElementById('doc-cost-currency');
     if (cur && c.quote.currency) cur.value = c.quote.currency;
-    source = { kind:'quote', label:`📋 Synced from Quotation ${c.quote.number || ''}`.trim(), caseId };
+    docCostSourceLocked = true;
+    source = { kind:'quote', label:`🔒 Read-only — synced from Quotation ${c.quote.number || ''}`.trim(), caseId };
   } else if (c) {
     docCostLines = defaultDocCostLines(c);
-    source = { kind:'defaults', label:'⚠ Using HWA defaults — no Quotation saved yet for this case', caseId };
+    docCostSourceLocked = false;
+    source = { kind:'defaults', label:'⚠ No Quotation saved yet for this case — defaults shown (editable)', caseId };
   } else {
     docCostLines = defaultDocCostLines(null);
-    source = { kind:'defaults-no-case', label:'⚠ No case selected — using generic defaults', caseId:null };
+    docCostSourceLocked = false;
+    source = { kind:'defaults-no-case', label:'⚠ No case selected — generic defaults (editable)', caseId:null };
   }
   renderDocCostLines();
   recalcDocCostTotal();
@@ -4211,20 +4212,29 @@ function renderDocCostSource(source) {
 function renderDocCostLines() {
   const tbody = document.getElementById('doc-cost-body');
   if (!tbody) return;
+  // Read-only mode when a Quotation backs this case — values flow one-way from
+  // the Quotation, so the two are never out of sync.
+  const ro = !!docCostSourceLocked;
+  const disabledAttr = ro ? 'readonly disabled' : '';
+  const inputStyle = `width:100%;background:${ro ? 'rgba(0,0,0,0.04)' : 'var(--surface)'};border:1px solid var(--border);border-radius:4px;padding:5px 7px;font-size:12px;color:var(--text);${ro ? 'cursor:not-allowed' : ''}`;
   tbody.innerHTML = docCostLines.map((it, i) => `
     <tr>
       <td style="padding:4px 4px">
-        <input data-idx="${i}" data-k="desc" value="${escAttr(it.desc||'')}" oninput="onDocCostCell(this)" style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:5px 7px;font-size:12px;color:var(--text)">
+        <input data-idx="${i}" data-k="desc" value="${escAttr(it.desc||'')}" ${disabledAttr} ${ro ? '' : 'oninput="onDocCostCell(this)"'} style="${inputStyle}">
       </td>
       <td style="padding:4px 4px;text-align:right">
-        <input data-idx="${i}" data-k="amt" type="number" step="0.01" value="${it.amt||0}" oninput="onDocCostCell(this)" style="width:110px;text-align:right;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:5px 7px;font-size:12px;color:var(--text)">
+        <input data-idx="${i}" data-k="amt" type="number" step="0.01" value="${it.amt||0}" ${disabledAttr} ${ro ? '' : 'oninput="onDocCostCell(this)"'} style="width:110px;text-align:right;background:${ro ? 'rgba(0,0,0,0.04)' : 'var(--surface)'};border:1px solid var(--border);border-radius:4px;padding:5px 7px;font-size:12px;color:var(--text);${ro ? 'cursor:not-allowed' : ''}">
       </td>
       <td style="padding:4px 4px">
-        <button class="btn btn-danger btn-sm" type="button" onclick="removeDocCostLine(${i})" style="padding:2px 7px;font-size:11px">✕</button>
+        ${ro ? '' : `<button class="btn btn-danger btn-sm" type="button" onclick="removeDocCostLine(${i})" style="padding:2px 7px;font-size:11px">✕</button>`}
       </td>
     </tr>
   `).join('');
+  // Toggle visibility of the Add-line / Sync buttons too (no point if read-only).
+  const addBtn  = document.querySelector('#doc-cost-row button[onclick="addDocCostLine()"]');
+  if (addBtn) addBtn.style.display = ro ? 'none' : '';
 }
+let docCostSourceLocked = false;
 function onDocCostCell(input) {
   const i = parseInt(input.dataset.idx, 10);
   if (isNaN(i) || !docCostLines[i]) return;
