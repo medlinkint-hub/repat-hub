@@ -2835,25 +2835,9 @@ Avg flow: 3 L/min"></textarea>
         </div>
       </div>
 
-      <!-- 8. Cost reconciliation -->
+      <!-- 8. Sign-off -->
       <div class="rr-section">
-        <div class="rr-section-title">8 · Cost Reconciliation (EUR)</div>
-        <table class="rr-cost-table">
-          <thead><tr><th>Item</th><th style="text-align:right">Estimated</th><th style="text-align:right">Actual</th><th>Notes</th></tr></thead>
-          <tbody>
-            <tr><td>Air transport (tickets / ambulance)</td><td><input id="rr-c-air-e" type="number" step="0.01"></td><td><input id="rr-c-air-a" type="number" step="0.01"></td><td><input id="rr-c-air-n"></td></tr>
-            <tr><td>Ground transport (both ends)</td><td><input id="rr-c-gnd-e" type="number" step="0.01"></td><td><input id="rr-c-gnd-a" type="number" step="0.01"></td><td><input id="rr-c-gnd-n"></td></tr>
-            <tr><td>Medical escort fees</td><td><input id="rr-c-esc-e" type="number" step="0.01"></td><td><input id="rr-c-esc-a" type="number" step="0.01"></td><td><input id="rr-c-esc-n"></td></tr>
-            <tr><td>Equipment / O₂ / medications</td><td><input id="rr-c-eq-e" type="number" step="0.01"></td><td><input id="rr-c-eq-a" type="number" step="0.01"></td><td><input id="rr-c-eq-n"></td></tr>
-            <tr><td>Other (accommodation, fees, …)</td><td><input id="rr-c-oth-e" type="number" step="0.01"></td><td><input id="rr-c-oth-a" type="number" step="0.01"></td><td><input id="rr-c-oth-n"></td></tr>
-            <tr class="rr-total-row"><td><strong>Total</strong></td><td style="text-align:right"><strong id="rr-c-tot-e">—</strong></td><td style="text-align:right"><strong id="rr-c-tot-a">—</strong></td><td><strong id="rr-c-tot-var" style="font-size:12px"></strong></td></tr>
-          </tbody>
-        </table>
-      </div>
-
-      <!-- 9. Sign-off -->
-      <div class="rr-section">
-        <div class="rr-section-title">9 · Sign-off</div>
+        <div class="rr-section-title">8 · Sign-off</div>
         <div class="rr-grid-3">
           <div class="rr-field"><label>Completed by</label><input id="rr-signed-by" placeholder="Name / role"></div>
           <div class="rr-field"><label>Date</label><input id="rr-signed-date" type="date"></div>
@@ -5301,22 +5285,10 @@ function openRepatReport(caseId) {
   document.getElementById('rr-issues').value = r.issues || '';
   document.getElementById('rr-recs').value   = r.recs   || '';
 
-  // 8. Costs
-  const cost = r.cost || {};
-  ['air','gnd','esc','eq','oth'].forEach(k => {
-    document.getElementById(`rr-c-${k}-e`).value = cost[`${k}E`] ?? '';
-    document.getElementById(`rr-c-${k}-a`).value = cost[`${k}A`] ?? '';
-    document.getElementById(`rr-c-${k}-n`).value = cost[`${k}N`] ?? '';
-  });
-  recalcRepatCosts();
-
-  // 9. Sign-off
+  // 8. Sign-off
   document.getElementById('rr-signed-by').value   = r.signedBy   || '';
   document.getElementById('rr-signed-date').value = r.signedDate || '';
   document.getElementById('rr-signed-md').value   = r.signedMd   || '';
-
-  // Wire cost inputs to live-recalc
-  document.querySelectorAll('.rr-cost-table input[type="number"]').forEach(i => i.oninput = recalcRepatCosts);
 
   document.getElementById('repat-report-modal').style.display = 'flex';
 }
@@ -5326,29 +5298,13 @@ function closeRepatReport() {
   currentReportCaseId = null;
 }
 
-function recalcRepatCosts() {
-  const sumCol = suffix => ['air','gnd','esc','eq','oth']
-    .map(k => parseFloat(document.getElementById(`rr-c-${k}-${suffix}`).value))
-    .filter(n => !isNaN(n))
-    .reduce((a,b)=>a+b, 0);
-  const e = sumCol('e'), a = sumCol('a');
-  document.getElementById('rr-c-tot-e').textContent = e ? '€' + e.toFixed(2) : '—';
-  document.getElementById('rr-c-tot-a').textContent = a ? '€' + a.toFixed(2) : '—';
-  const variance = (a && e) ? a - e : null;
-  const varEl = document.getElementById('rr-c-tot-var');
-  if (variance == null) { varEl.textContent = ''; return; }
-  const sign = variance > 0 ? '+' : '';
-  const colour = variance > 0 ? 'var(--red)' : 'var(--green)';
-  varEl.style.color = colour;
-  varEl.textContent = `Δ ${sign}€${variance.toFixed(2)}`;
-}
-
 async function saveRepatReport() {
   if (!currentReportCaseId) return;
   const c = cases.find(x => x.id === currentReportCaseId);
   if (!c) return;
   const val = id => document.getElementById(id).value || '';
-  const num = id => { const v = parseFloat(document.getElementById(id).value); return isNaN(v) ? null : v; };
+  // Preserve any legacy cost data on the case record (don't clobber, just don't show / edit it).
+  const legacyCost = c.repatReport?.cost;
   c.repatReport = {
     date: val('rr-date'), type: val('rr-type'), elapsed: val('rr-elapsed'),
     origin: val('rr-origin'), dest: val('rr-dest'), airline: val('rr-airline'), flights: val('rr-flights'),
@@ -5360,15 +5316,9 @@ async function saveRepatReport() {
     recvFac: val('rr-recv-fac'), recvDoc: val('rr-recv-doc'),
     outcome: val('rr-outcome'), handover: val('rr-handover'), deviation: val('rr-deviation'), devNotes: val('rr-dev-notes'),
     issues: val('rr-issues'), recs: val('rr-recs'),
-    cost: {
-      airE: num('rr-c-air-e'), airA: num('rr-c-air-a'), airN: val('rr-c-air-n'),
-      gndE: num('rr-c-gnd-e'), gndA: num('rr-c-gnd-a'), gndN: val('rr-c-gnd-n'),
-      escE: num('rr-c-esc-e'), escA: num('rr-c-esc-a'), escN: val('rr-c-esc-n'),
-      eqE:  num('rr-c-eq-e'),  eqA:  num('rr-c-eq-a'),  eqN:  val('rr-c-eq-n'),
-      othE: num('rr-c-oth-e'), othA: num('rr-c-oth-a'), othN: val('rr-c-oth-n')
-    },
     signedBy: val('rr-signed-by'), signedDate: val('rr-signed-date'), signedMd: val('rr-signed-md'),
-    updatedAt: new Date().toISOString()
+    updatedAt: new Date().toISOString(),
+    ...(legacyCost ? { cost: legacyCost } : {})
   };
   await persistCase(c);
   toast('Repatriation report saved.', 'success');
