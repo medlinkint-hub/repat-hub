@@ -1800,7 +1800,7 @@ The AI will provide:
         <div class="card-actions">
           <button class="btn btn-ghost btn-sm" onclick="copyDoc()">⎘ <span data-i18n="copy">Copy</span></button>
           <button class="btn btn-ghost btn-sm" onclick="downloadDocAsTxt()" title="Plain text">⬇ .txt</button>
-          <button class="btn btn-primary btn-sm" onclick="downloadDoc()" title="Formatted PDF with HWA header">⬇ <span data-i18n="download">PDF</span></button>
+          <button class="btn btn-primary btn-sm" onclick="downloadDoc()" title="Formatted PDF with HWA header">⬇ PDF</button>
         </div>
       </div>
       <div class="doc-output" id="doc-output" data-i18n="doc_waiting">Select a document type, load a case (or the AI will use the most recent), then press Generate.</div>
@@ -3908,29 +3908,18 @@ async function generateQuotePdf() {
     bodyHtml:   buildQuotePdfBody(c, q),
     docTypeLabel: 'Quote'
   });
-  document.body.appendChild(wrap);
   try {
     const filename = `Quote_${c.id}_${new Date().toISOString().slice(0,10)}.pdf`;
-    const blob = await html2pdf().set({
-      margin:[10,10,10,10], filename,
-      image:{ type:'jpeg', quality:0.95 },
-      html2canvas:{ scale:2, useCORS:true, backgroundColor:'#ffffff' },
-      jsPDF:{ unit:'mm', format:'a4', orientation:'portrait' },
-      pagebreak:{ mode:['css','legacy'] }
-    }).from(wrap).outputPdf('blob');
-
+    const blob = await renderWrapperToPdfBlob(wrap, filename);
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob); link.download = filename; link.click();
-
     if (blob.size <= ATTACHMENT_MAX_BYTES) {
       const file = new File([blob], filename, { type:'application/pdf' });
       await uploadAttachment(c.id, file, 'Quotation');
     }
-    toast('Quotation PDF generated & attached to case.', 'success');
+    toast('Quotation PDF generated & attached (' + Math.round(blob.size/1024) + ' KB)', 'success');
   } catch(e) {
-    console.error(e); toast('PDF failed: ' + e.message, 'error');
-  } finally {
-    wrap.remove();
+    console.error('Quote PDF failed:', e); toast('Quote PDF failed: ' + e.message, 'error');
   }
   btn.disabled = false; btn.textContent = old;
 }
@@ -4217,29 +4206,18 @@ async function generatePreflightPdf() {
     bodyHtml:   buildPreflightPdfBody(c, pf),
     docTypeLabel: 'Pre-Flight'
   });
-  document.body.appendChild(wrap);
   try {
     const filename = `PreFlight_${c.id}_${new Date().toISOString().slice(0,10)}.pdf`;
-    const blob = await html2pdf().set({
-      margin: [10, 10, 10, 10], filename,
-      image: { type:'jpeg', quality:0.95 },
-      html2canvas: { scale:2, useCORS:true, backgroundColor:'#ffffff' },
-      jsPDF: { unit:'mm', format:'a4', orientation:'portrait' },
-      pagebreak: { mode:['css','legacy'] }
-    }).from(wrap).outputPdf('blob');
-
+    const blob = await renderWrapperToPdfBlob(wrap, filename);
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob); link.download = filename; link.click();
-
     if (blob.size <= ATTACHMENT_MAX_BYTES) {
       const file = new File([blob], filename, { type:'application/pdf' });
       await uploadAttachment(c.id, file, 'Pre-flight Assessment');
     }
-    toast('Pre-flight PDF generated & attached to case.', 'success');
+    toast('Pre-flight PDF generated & attached (' + Math.round(blob.size/1024) + ' KB)', 'success');
   } catch(e) {
-    console.error(e); toast('PDF failed: ' + e.message, 'error');
-  } finally {
-    wrap.remove();
+    console.error('Pre-flight PDF failed:', e); toast('Pre-flight PDF failed: ' + e.message, 'error');
   }
   btn.disabled = false; btn.textContent = old;
 }
@@ -6653,21 +6631,12 @@ async function downloadSavedDoc(caseId, idx) {
     bodyHtml:   mdToHtml(d.content),
     docTypeLabel: labels[d.type] || ''
   });
-  document.body.appendChild(wrap);
   try {
-    const blob = await html2pdf().set({
-      margin:[10,10,10,10], filename: fileBase + '.pdf',
-      image:{type:'jpeg',quality:0.95},
-      html2canvas:{scale:2,useCORS:true,backgroundColor:'#ffffff'},
-      jsPDF:{unit:'mm',format:'a4',orientation:'portrait'},
-      pagebreak:{mode:['css','legacy']}
-    }).from(wrap).outputPdf('blob');
+    const blob = await renderWrapperToPdfBlob(wrap, fileBase + '.pdf');
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = fileBase + '.pdf'; a.click();
-    toast('Branded PDF downloaded.', 'success');
+    toast('Branded PDF downloaded (' + Math.round(blob.size/1024) + ' KB)', 'success');
   } catch(e) {
-    console.error(e); toast('PDF failed: ' + e.message, 'error');
-  } finally {
-    wrap.remove();
+    console.error('Saved-doc PDF failed:', e); toast('PDF failed: ' + e.message, 'error');
   }
 }
 function downloadCurrentViewerDoc() {
@@ -6824,8 +6793,45 @@ function buildHwaPdfWrapper({ title, subtitle, caseId, patient, issueDate, bodyH
       .doc-body a { color:#1a2f5e;text-decoration:underline }
     </style>
   `;
-  wrap.style.position = 'fixed'; wrap.style.left = '-9999px'; wrap.style.top = '0'; wrap.style.width = '190mm';
+  // Position absolutely far off-screen so html2canvas can still measure and
+  // render the element. position:fixed with negative coords sometimes captures
+  // as blank in scrolled pages (this is the root cause of the 'empty PDF' bug).
+  wrap.style.position = 'absolute';
+  wrap.style.left = '-9999px';
+  wrap.style.top = '0';
+  wrap.style.width = '190mm';
+  wrap.style.background = '#ffffff';
   return wrap;
+}
+
+// Render a built wrapper element to a PDF blob, with a layout-settle wait and
+// a sanity check that the resulting PDF actually has content. Returns the blob
+// on success, or throws with a useful message on failure.
+async function renderWrapperToPdfBlob(wrap, filename) {
+  if (typeof html2pdf === 'undefined') throw new Error('PDF library (html2pdf) not loaded');
+  document.body.appendChild(wrap);
+  // Two RAFs so the browser has fully laid out and painted the element.
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const rect = wrap.getBoundingClientRect();
+  if (!rect.width || !rect.height) {
+    wrap.remove();
+    throw new Error(`Wrapper has zero dimensions (${rect.width}×${rect.height}) — likely a CSS issue`);
+  }
+  try {
+    const blob = await html2pdf().set({
+      margin: [10, 10, 10, 10], filename,
+      image: { type:'jpeg', quality:0.95 },
+      html2canvas: { scale:2, useCORS:true, backgroundColor:'#ffffff', logging:false, windowWidth: 1024 },
+      jsPDF: { unit:'mm', format:'a4', orientation:'portrait' },
+      pagebreak: { mode:['css','legacy'] }
+    }).from(wrap).outputPdf('blob');
+    if (!blob || blob.size < 3000) {
+      throw new Error(`Resulting PDF is suspiciously small (${blob ? blob.size : 0} bytes) — likely rendered blank. Try again, or use the .txt button.`);
+    }
+    return blob;
+  } finally {
+    wrap.remove();
+  }
 }
 
 async function downloadDoc() {
@@ -6846,16 +6852,8 @@ async function downloadDoc() {
     bodyHtml:   mdToHtml(text),
     docTypeLabel: labels[activeDocType] || ''
   });
-  document.body.appendChild(wrap);
   try {
-    const blob = await html2pdf().set({
-      margin: [10, 10, 10, 10],
-      filename: fileBase + '.pdf',
-      image: { type:'jpeg', quality:0.95 },
-      html2canvas: { scale:2, useCORS:true, backgroundColor:'#ffffff' },
-      jsPDF: { unit:'mm', format:'a4', orientation:'portrait' },
-      pagebreak: { mode:['css','legacy'] }
-    }).from(wrap).outputPdf('blob');
+    const blob = await renderWrapperToPdfBlob(wrap, fileBase + '.pdf');
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.download = fileBase + '.pdf';
@@ -6864,14 +6862,13 @@ async function downloadDoc() {
       const file = new File([blob], fileBase + '.pdf', { type:'application/pdf' });
       try { await uploadAttachment(c.id, file, names[activeDocType] || 'Generated document'); } catch(_) {}
     }
-    toast('PDF downloaded' + (c ? ' & attached to case' : '') + '.', 'success');
+    toast('PDF downloaded' + (c ? ' & attached to case' : '') + ' (' + Math.round(blob.size/1024) + ' KB)', 'success');
   } catch(e) {
-    console.error(e);
+    console.error('PDF render failed:', e);
     toast('PDF failed (' + e.message + ') — falling back to .txt', 'error');
     downloadDocAsTxt();
-  } finally {
-    wrap.remove();
   }
+  // renderWrapperToPdfBlob handles the DOM cleanup itself.
 }
 
 function downloadDocAsTxt() {
