@@ -1425,6 +1425,22 @@ input.ie-filled, select.ie-filled, textarea.ie-filled {
           <div id="eval-notes-list" style="margin-top:12px;display:flex;flex-direction:column;gap:6px;max-height:240px;overflow-y:auto"></div>
         </div>
 
+        <div class="card" style="margin-bottom:20px" id="eval-pending-card" style="display:none">
+          <div class="card-header">
+            <h3>⏳ Pending Information</h3>
+            <span style="font-size:11px;color:var(--text-dim)" id="eval-pending-count">0 pending</span>
+          </div>
+          <div style="font-size:12px;color:var(--text-dim);margin-bottom:10px;line-height:1.5">
+            Items flagged as pending on this case. When information arrives, mark it as received — the case will be automatically re-evaluated with the new data.
+          </div>
+          <div id="eval-pending-list" style="display:flex;flex-direction:column;gap:8px"></div>
+          <div style="display:flex;gap:6px;margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">
+            <input type="text" id="eval-new-pending-input" placeholder="What are you waiting for? e.g. MEDIF from treating MD…"
+              style="flex:1;padding:7px 10px;font-size:12px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:inherit">
+            <button class="btn btn-ghost btn-sm" style="color:#b45309;border-color:rgba(217,119,6,0.4);white-space:nowrap" onclick="addPendingFromEval()">⏳ Flag pending</button>
+          </div>
+        </div>
+
         <div class="card">
           <div class="card-header">
             <h3 data-i18n="transport_mode">Transport Mode Selection</h3>
@@ -5289,30 +5305,70 @@ function refreshCaseModalIfOpen() {
   }
 }
 
-function renderNotesBlock(c) {
+function renderNotesBlock(c) { return renderTimelineBlock(c); }
+
+function renderTimelineBlock(c) {
   const notes = Array.isArray(c.notes) ? c.notes : [];
-  const recent = notes.slice(-3).reverse();
-  const rows = recent.map(n => `
-    <div style="padding:8px 11px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px">
-      <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.4px">${new Date(n.at).toLocaleString()}${n.by ? ' · ' + escHtml(n.by) : ''}</div>
-      <div style="font-size:12px;color:var(--text);margin-top:3px;white-space:pre-wrap">${escHtml(n.text)}</div>
-    </div>
-  `).join('');
-  return `
-    <div id="notes-block-${c.id}" style="margin-top:18px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-        <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;font-weight:600">📝 Notes (${notes.length}${notes.length > 3 ? ' · showing last 3' : ''})</div>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:6px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:9px">
-        <textarea id="case-note-input-${c.id}" rows="2" placeholder="Add a note — phone update, new symptom, insurer decision, etc."
-                  style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:7px 9px;font-size:12px;color:var(--text);font-family:inherit;resize:vertical"></textarea>
-        <div style="display:flex;gap:6px;justify-content:flex-end">
-          <button class="btn btn-primary btn-sm" id="case-note-btn-${c.id}" onclick="addNoteInline('${c.id}')">+ Add note</button>
+  const pendingItems = (c.pendingItems || []).filter(x => x.status === 'pending');
+
+  const pendingHTML = pendingItems.map(item => `
+    <div style="padding:9px 11px;background:rgba(217,119,6,0.07);border:1px solid rgba(217,119,6,0.25);border-radius:6px;margin-bottom:6px">
+      <div style="font-size:12px;font-weight:600;color:#92400e">${escHtml(item.description)}</div>
+      <div style="font-size:10px;color:var(--text-faint);margin-top:2px">Added ${new Date(item.addedAt).toLocaleString()}</div>
+      <div id="resolve-form-${item.id}" style="display:none;margin-top:8px">
+        <textarea id="resolve-text-${item.id}" rows="2" placeholder="Describe what was received…"
+          style="width:100%;font-size:12px;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:inherit;resize:vertical;box-sizing:border-box"></textarea>
+        <div style="display:flex;gap:6px;margin-top:5px">
+          <button class="btn btn-primary btn-sm" onclick="confirmResolve('${c.id}','${item.id}')">✓ Submit & Re-evaluate</button>
+          <button class="btn btn-ghost btn-sm" onclick="document.getElementById('resolve-form-${item.id}').style.display='none'">Cancel</button>
         </div>
       </div>
-      <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">${rows || '<div style="font-size:12px;color:var(--text-faint);font-style:italic;padding:6px 2px">No notes yet.</div>'}</div>
+      <button class="btn btn-ghost btn-sm" style="margin-top:6px;font-size:11px;color:#b45309;border-color:rgba(217,119,6,0.4)"
+        onclick="document.getElementById('resolve-form-${item.id}').style.display='block';document.getElementById('resolve-text-${item.id}').focus()">✓ Mark as Received</button>
     </div>
-  `;
+  `).join('');
+
+  const recent = [...notes].reverse().slice(0, 12);
+  const eventsHTML = recent.map(n => {
+    const isPending  = n.text.startsWith('[⏳ PENDING]');
+    const isResolved = n.text.startsWith('[✅ RECEIVED]');
+    const dotBg = isPending ? '#b45309' : isResolved ? '#15803d' : 'var(--hwa-navy)';
+    const icon  = isPending ? '⏳' : isResolved ? '✅' : '📝';
+    const display = n.text.replace(/^\[⏳ PENDING\] /,'').replace(/^\[✅ RECEIVED\] /,'');
+    const titleColor = isPending ? 'color:#92400e' : isResolved ? 'color:#15803d' : '';
+    return `
+      <div class="tl-item">
+        <div class="tl-dot" style="background:${dotBg};border-color:${dotBg};color:#fff;font-size:10px;display:flex;align-items:center;justify-content:center">${icon}</div>
+        <div class="tl-body">
+          <div class="tl-title" style="${titleColor}">${isPending?'⏳ Awaiting: ':isResolved?'✅ Received: ':''}${escHtml(display)}</div>
+          <div class="tl-time">${new Date(n.at||'').toLocaleString()}${n.by?' · '+escHtml(n.by):''}</div>
+        </div>
+      </div>`;
+  }).join('');
+
+  return `
+    <div id="notes-block-${c.id}" style="margin-top:18px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;font-weight:600">📋 Timeline</div>
+        ${pendingItems.length ? `<span style="font-size:10px;background:rgba(217,119,6,0.15);color:#b45309;padding:2px 8px;border-radius:10px;font-weight:700">⏳ ${pendingItems.length} pending</span>` : ''}
+      </div>
+      ${pendingItems.length ? `
+        <div style="background:rgba(217,119,6,0.04);border:1px solid rgba(217,119,6,0.2);border-radius:8px;padding:10px;margin-bottom:10px">
+          <div style="font-size:10px;font-weight:700;color:#b45309;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">⏳ Pending Information</div>
+          ${pendingHTML}
+        </div>` : ''}
+      <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:9px;margin-bottom:10px">
+        <textarea id="case-note-input-${c.id}" rows="2" placeholder="Note, update, or describe what you are waiting for…"
+                  style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:7px 9px;font-size:12px;color:var(--text);font-family:inherit;resize:vertical;box-sizing:border-box"></textarea>
+        <div style="display:flex;gap:6px;margin-top:6px;justify-content:flex-end;flex-wrap:wrap">
+          <button class="btn btn-ghost btn-sm" id="case-note-btn-${c.id}" onclick="addNoteInline('${c.id}')">＋ Add note</button>
+          <button class="btn btn-ghost btn-sm" style="color:#b45309;border-color:rgba(217,119,6,0.4)" onclick="addPendingFromModal('${c.id}')">⏳ Flag as pending</button>
+        </div>
+      </div>
+      <div class="timeline" style="padding-left:4px">
+        ${eventsHTML || '<div style="font-size:12px;color:var(--text-faint);font-style:italic;padding:6px 2px">No events yet.</div>'}
+      </div>
+    </div>`;
 }
 // Surgically refresh only the Notes block so we don't reset modal scroll
 // or dismiss the on-screen keyboard the way a full modal re-render does.
@@ -5341,6 +5397,56 @@ async function addNoteInline(caseId) {
     if (btn) { btn.disabled = false; btn.textContent = '+ Add note'; }
   }
 }
+// ── Pending information tracking ──────────────────────────
+async function addPendingFromModal(caseId) {
+  const ta = document.getElementById(`case-note-input-${caseId}`);
+  const text = (ta?.value || '').trim();
+  if (!text) { toast('Describe what you are waiting for.', 'error'); return; }
+  await addPendingItem(caseId, text);
+  if (ta) ta.value = '';
+}
+
+async function addPendingItem(caseId, description) {
+  const c = cases.find(x => x.id === caseId);
+  if (!c) return;
+  if (!Array.isArray(c.pendingItems)) c.pendingItems = [];
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+  const item = { id, description, addedAt: new Date().toISOString(), status: 'pending', resolvedAt: null, resolvedText: null };
+  c.pendingItems.push(item);
+  if (!Array.isArray(c.notes)) c.notes = [];
+  c.notes.push({ text: `[⏳ PENDING] ${description}`, at: item.addedAt, by: 'coordinator' });
+  await persistCase(c);
+  toast('Added to timeline as pending.', 'success');
+  refreshNotesBlock(caseId);
+  renderEvalPendingItems();
+}
+
+async function confirmResolve(caseId, itemId) {
+  const ta = document.getElementById(`resolve-text-${itemId}`);
+  const text = (ta?.value || '').trim();
+  if (!text) { toast('Enter the received information first.', 'error'); return; }
+  await resolvePendingItem(caseId, itemId, text);
+}
+
+async function resolvePendingItem(caseId, itemId, resolvedText) {
+  const c = cases.find(x => x.id === caseId);
+  if (!c) return;
+  const item = (c.pendingItems || []).find(x => x.id === itemId);
+  if (!item) return;
+  item.status = 'resolved';
+  item.resolvedAt = new Date().toISOString();
+  item.resolvedText = resolvedText;
+  if (!Array.isArray(c.notes)) c.notes = [];
+  c.notes.push({ text: `[✅ RECEIVED] ${item.description}: ${resolvedText}`, at: item.resolvedAt, by: 'coordinator' });
+  await persistCase(c);
+  toast('Information received — running new evaluation…', 'success');
+  refreshNotesBlock(caseId);
+  // Auto-navigate to AI eval and re-evaluate
+  loadCaseForEval(caseId);
+  navTo('ai-eval');
+  setTimeout(() => runAIEval(), 450);
+}
+
 // Kept for any older onclick references that still call the old function.
 async function addNoteFromCaseModal(caseId) {
   const ta = document.getElementById(`case-note-input-${caseId}`);
@@ -5665,6 +5771,52 @@ function loadCaseForEval(id) {
   }
   document.getElementById('eval-manual-input').value = buildFullCaseContext(c);
   renderEvalNotes();
+  renderEvalPendingItems();
+}
+
+function renderEvalPendingItems() {
+  const card = document.getElementById('eval-pending-card');
+  const list = document.getElementById('eval-pending-list');
+  const counter = document.getElementById('eval-pending-count');
+  if (!card || !list) return;
+  const c = cases.find(x => x.id === currentEvalCaseId);
+  const pending = (c?.pendingItems || []).filter(x => x.status === 'pending');
+  card.style.display = pending.length ? 'block' : 'none';
+  if (counter) counter.textContent = `${pending.length} pending`;
+  list.innerHTML = pending.map(item => `
+    <div style="padding:10px;background:rgba(217,119,6,0.07);border:1px solid rgba(217,119,6,0.25);border-radius:6px">
+      <div style="font-size:13px;font-weight:600;color:#92400e">${escHtml(item.description)}</div>
+      <div style="font-size:10px;color:var(--text-faint);margin-top:2px;margin-bottom:8px">Pending since ${new Date(item.addedAt).toLocaleDateString()}</div>
+      <div id="eval-resolve-form-${item.id}" style="display:none">
+        <textarea id="eval-resolve-text-${item.id}" rows="2" placeholder="Describe the received information…"
+          style="width:100%;font-size:12px;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:inherit;resize:vertical;box-sizing:border-box"></textarea>
+        <div style="display:flex;gap:6px;margin-top:5px">
+          <button class="btn btn-primary btn-sm" onclick="confirmResolveFromEval('${c.id}','${item.id}')">✓ Submit & Re-evaluate</button>
+          <button class="btn btn-ghost btn-sm" onclick="document.getElementById('eval-resolve-form-${item.id}').style.display='none'">Cancel</button>
+        </div>
+      </div>
+      <button class="btn btn-ghost btn-sm" style="font-size:11px;color:#b45309;border-color:rgba(217,119,6,0.4)"
+        onclick="document.getElementById('eval-resolve-form-${item.id}').style.display='block';document.getElementById('eval-resolve-text-${item.id}').focus()">✓ Mark as Received</button>
+    </div>
+  `).join('') || '<div style="font-size:12px;color:var(--text-faint);font-style:italic">No pending items.</div>';
+}
+
+async function addPendingFromEval() {
+  const inp = document.getElementById('eval-new-pending-input');
+  const text = (inp?.value || '').trim();
+  if (!currentEvalCaseId) { toast('Select a case first.', 'error'); return; }
+  if (!text) { toast('Describe what you are waiting for.', 'error'); return; }
+  await addPendingItem(currentEvalCaseId, text);
+  if (inp) inp.value = '';
+  renderEvalPendingItems();
+}
+
+async function confirmResolveFromEval(caseId, itemId) {
+  const ta = document.getElementById(`eval-resolve-text-${itemId}`);
+  const text = (ta?.value || '').trim();
+  if (!text) { toast('Enter the received information first.', 'error'); return; }
+  await resolvePendingItem(caseId, itemId, text);
+  renderEvalPendingItems();
 }
 function renderEvalNotes() {
   const list = document.getElementById('eval-notes-list');
@@ -5815,8 +5967,15 @@ function buildFullCaseContext(c) {
   }
   if (Array.isArray(c.notes) && c.notes.length) {
     lines.push('');
-    lines.push('## Coordinator notes (chronological)');
+    lines.push('## Coordinator notes & timeline (chronological)');
     c.notes.slice(-12).forEach(n => lines.push(`- [${(n.at||'').slice(0,16).replace('T',' ')}${n.by ? ' · '+n.by : ''}] ${n.text}`));
+  }
+  const activePending = (c.pendingItems || []).filter(x => x.status === 'pending');
+  if (activePending.length) {
+    lines.push('');
+    lines.push('## Information still pending — not yet received');
+    activePending.forEach(item => lines.push(`- ⏳ ${item.description} (pending since ${(item.addedAt||'').slice(0,10)})`));
+    lines.push('IMPORTANT: These items are still outstanding. Flag them as open gaps in your evaluation. A new evaluation will be triggered automatically when each item is received.');
   }
   return lines.join('\n');
 }
