@@ -903,6 +903,9 @@ input.ie-filled, select.ie-filled, textarea.ie-filled {
   </div>
 
   <div class="nav-section-label">Network</div>
+  <div class="nav-item" onclick="navTo('contact-finder')" id="nav-contact-finder">
+    <span class="nav-icon">🎯</span><span>Contact Finder</span>
+  </div>
   <div class="nav-section-label">System</div>
   <div class="nav-item" onclick="navTo('settings')" id="nav-settings">
     <span class="nav-icon">⚙</span><span>Settings</span>
@@ -2013,6 +2016,66 @@ The AI will provide:
         <button class="btn btn-ghost btn-sm" onclick="testFirebaseConnection()" style="margin-top:14px">🔄 Test Connection</button>
       </div>
 
+      <!-- GOOGLE PLACES -->
+      <div class="card">
+        <div class="card-header">
+          <h3>📍 Google Places API <span style="font-size:11px;font-weight:400;color:var(--text-dim)">— Contact Finder: phone, website, address</span></h3>
+          <span id="rcf-gp-badge" class="badge badge-completed">Not set</span>
+        </div>
+        <div class="form-group" style="margin-bottom:10px">
+          <label>API Key</label>
+          <div style="display:flex;gap:8px">
+            <input type="password" id="setting-gp-key" placeholder="AIzaSy…" style="flex:1;font-family:'DM Mono',monospace"/>
+            <button class="btn btn-icon btn-ghost" onclick="toggleVisible('setting-gp-key')" title="Show/hide">👁</button>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <button class="btn btn-primary btn-sm" onclick="saveRcfApiKey('gp')">💾 Save Key</button>
+          <button id="rcf-gp-toggle" class="toggle-chip" onclick="toggleRcfApi('gp')">OFF</button>
+          <span style="font-size:12px;color:var(--text-dim)">Toggle on to enable in Contact Finder</span>
+        </div>
+      </div>
+
+      <!-- HEALTHSITES.IO -->
+      <div class="card">
+        <div class="card-header">
+          <h3>🏥 Healthsites.io API <span style="font-size:11px;font-weight:400;color:var(--text-dim)">— Contact Finder: medical facility data (free)</span></h3>
+          <span id="rcf-hs-badge" class="badge badge-completed">Not set</span>
+        </div>
+        <div class="form-group" style="margin-bottom:10px">
+          <label>API Key</label>
+          <div style="display:flex;gap:8px">
+            <input type="password" id="setting-hs-key" placeholder="healthsites.io API key…" style="flex:1;font-family:'DM Mono',monospace"/>
+            <button class="btn btn-icon btn-ghost" onclick="toggleVisible('setting-hs-key')" title="Show/hide">👁</button>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <button class="btn btn-primary btn-sm" onclick="saveRcfApiKey('hs')">💾 Save Key</button>
+          <button id="rcf-hs-toggle" class="toggle-chip" onclick="toggleRcfApi('hs')">OFF</button>
+          <span style="font-size:12px;color:var(--text-dim)">Toggle on to enable in Contact Finder</span>
+        </div>
+      </div>
+
+      <!-- HUNTER.IO -->
+      <div class="card">
+        <div class="card-header">
+          <h3>🔍 Hunter.io API <span style="font-size:11px;font-weight:400;color:var(--text-dim)">— Contact Finder: email discovery</span></h3>
+          <span id="rcf-hun-badge" class="badge badge-completed">Not set</span>
+        </div>
+        <div class="form-group" style="margin-bottom:10px">
+          <label>API Key</label>
+          <div style="display:flex;gap:8px">
+            <input type="password" id="setting-hun-key" placeholder="hunter.io API key…" style="flex:1;font-family:'DM Mono',monospace"/>
+            <button class="btn btn-icon btn-ghost" onclick="toggleVisible('setting-hun-key')" title="Show/hide">👁</button>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <button class="btn btn-primary btn-sm" onclick="saveRcfApiKey('hun')">💾 Save Key</button>
+          <button id="rcf-hun-toggle" class="toggle-chip" onclick="toggleRcfApi('hun')">OFF</button>
+          <span style="font-size:12px;color:var(--text-dim)">Toggle on to enable in Contact Finder</span>
+        </div>
+      </div>
+
       <!-- PLATFORM INFO -->
       <div class="card">
         <div class="card-header"><h3>ℹ Platform Information</h3></div>
@@ -2031,6 +2094,78 @@ The AI will provide:
       </div>
 
     </div>
+  </div>
+
+  <!-- ══════════════════════════════ CONTACT FINDER ══════════════════════════════ -->
+  <div class="view" id="view-contact-finder">
+    <div class="page-header">
+      <h1>🎯 Contact Finder</h1>
+      <p>Know the provider name but missing contact details? Enter what you have — find email, phone, website, and contact person.</p>
+    </div>
+
+    <div class="card" style="max-width:780px;margin-bottom:20px">
+      <div class="card-header"><h3>Search</h3></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div class="rr-field" style="grid-column:span 2">
+          <label>Provider / Hospital Name <span style="color:var(--hwa-red)">*</span></label>
+          <input type="text" id="rcf-name" placeholder="e.g. Evangelismos Hospital, Bupa Global, DRF Luftrettung…">
+        </div>
+        <div class="rr-field">
+          <label>Country <span style="color:var(--hwa-red)">*</span></label>
+          <input type="text" id="rcf-country" placeholder="e.g. Greece, Germany, UAE…">
+        </div>
+        <div class="rr-field">
+          <label>City <span style="color:var(--text-dim);font-weight:400">(optional)</span></label>
+          <input type="text" id="rcf-city" placeholder="e.g. Athens, Munich…">
+        </div>
+        <div class="rr-field">
+          <label>Website <span style="color:var(--text-dim);font-weight:400">(optional — speeds up email search)</span></label>
+          <input type="text" id="rcf-website" placeholder="e.g. evangelismos.gr">
+        </div>
+        <div class="rr-field">
+          <label>Provider Type <span style="color:var(--text-dim);font-weight:400">(optional)</span></label>
+          <select id="rcf-type">
+            <option value="">— Any type —</option>
+            <option value="hospital">🏥 Hospital</option>
+            <option value="clinic">🏢 Clinic / Medical Centre</option>
+            <option value="physical_therapy">🏋️ Physical Therapy</option>
+            <option value="doctor">👨‍⚕️ Doctor / Specialist</option>
+            <option value="ground_ambulance">🚑 Ground Ambulance</option>
+            <option value="air_ambulance">✈️ Air Ambulance</option>
+            <option value="tpa">🤝 TPA / Assistance Company</option>
+            <option value="insurance">🛡️ Insurance Company</option>
+            <option value="reinsurance">♻️ Reinsurance Company</option>
+            <option value="ipmi">🌐 IPMI</option>
+          </select>
+        </div>
+        <div class="rr-field" style="grid-column:span 2">
+          <label>Additional info <span style="color:var(--text-dim);font-weight:400">(optional — address, registration, speciality, any other known detail)</span></label>
+          <input type="text" id="rcf-extra" placeholder="e.g. private cardiac surgery centre, JCI accredited, member of EURAMI…">
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;margin-top:16px;flex-wrap:wrap">
+        <button class="btn btn-primary" id="rcf-search-btn" onclick="runRepContactFinder()">🎯 Find Contact Details</button>
+        <button class="btn btn-ghost btn-sm" onclick="clearRepContactFinder()">Clear</button>
+        <span id="rcf-status" style="font-size:12px;color:var(--text-dim)"></span>
+      </div>
+    </div>
+
+    <!-- Progress -->
+    <div id="rcf-progress" style="display:none;max-width:780px;margin-bottom:20px">
+      <div class="card">
+        <div style="font-size:13px;font-weight:700;color:var(--hwa-navy);margin-bottom:14px">Searching…</div>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px" id="rcf-steps">
+          <div id="rcf-step-0" style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-dim)"><span id="rcf-dot-0" style="width:22px;height:22px;border-radius:50%;background:#e5e7eb;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">1</span>Google Places lookup</div>
+          <div id="rcf-step-1" style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-dim)"><span id="rcf-dot-1" style="width:22px;height:22px;border-radius:50%;background:#e5e7eb;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">2</span>Healthsites.io + Hunter.io</div>
+          <div id="rcf-step-2" style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-dim)"><span id="rcf-dot-2" style="width:22px;height:22px;border-radius:50%;background:#e5e7eb;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">3</span>Claude AI web search</div>
+        </div>
+        <div style="background:#e5e7eb;border-radius:6px;height:6px;overflow:hidden"><div id="rcf-progress-bar" style="height:100%;background:var(--hwa-navy);transition:width 0.4s;width:0%"></div></div>
+        <div id="rcf-progress-status" style="font-size:12px;color:var(--text-dim);margin-top:8px">Starting…</div>
+      </div>
+    </div>
+
+    <!-- Result -->
+    <div id="rcf-result" style="display:none;max-width:780px"></div>
   </div>
 
 </div><!-- /main -->
@@ -7598,6 +7733,9 @@ function loadSettingsKeys() {
   // Populate settings fields if open
   const akEl = document.getElementById('setting-anthropic-key');
   if (ak && akEl) akEl.value = ak;
+
+  // Load Contact Finder API settings
+  loadRcfSettings();
 }
 
 // Override ANTHROPIC_KEY getter to always use stored value
@@ -8199,6 +8337,601 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 document.addEventListener('DOMContentLoaded', init);
+
+// ══════════════════════════════════════════════════════════════════
+// CONTACT FINDER
+// ══════════════════════════════════════════════════════════════════
+
+// ── API key/toggle helpers ───────────────────────────────────────
+function _rcfGetKey(which){ return localStorage.getItem('hwa_rcf_'+which+'_key')||''; }
+function _rcfEnabled(which){ return localStorage.getItem('hwa_rcf_'+which+'_enabled')==='true'; }
+
+function saveRcfApiKey(which){
+  const ids={gp:'setting-gp-key',hs:'setting-hs-key',hun:'setting-hun-key'};
+  const val=(document.getElementById(ids[which])?.value||'').trim();
+  if(!val){ toast('Enter an API key first','error'); return; }
+  localStorage.setItem('hwa_rcf_'+which+'_key',val);
+  _rcfUpdateBadge(which);
+  toast({gp:'Google Places',hs:'Healthsites.io',hun:'Hunter.io'}[which]+' key saved ✓','success');
+}
+
+function toggleRcfApi(which){
+  const cur=_rcfEnabled(which);
+  localStorage.setItem('hwa_rcf_'+which+'_enabled',(!cur).toString());
+  _rcfApplyToggleBtn(which);
+  toast({gp:'Google Places',hs:'Healthsites.io',hun:'Hunter.io'}[which]+(!cur?' enabled ✓':' disabled'),'success');
+}
+
+function _rcfApplyToggleBtn(which){
+  const btn=document.getElementById('rcf-'+which+'-toggle');
+  if(!btn)return;
+  const on=_rcfEnabled(which);
+  btn.textContent=on?'ON':'OFF';
+  if(on)btn.classList.add('on'); else btn.classList.remove('on');
+}
+
+function _rcfUpdateBadge(which){
+  const ids={gp:'rcf-gp-badge',hs:'rcf-hs-badge',hun:'rcf-hun-badge'};
+  const badge=document.getElementById(ids[which]);
+  if(!badge)return;
+  const key=_rcfGetKey(which);
+  if(key&&key.length>5){ badge.className='badge badge-active'; badge.textContent='✓ Configured'; }
+  else { badge.className='badge badge-completed'; badge.textContent='Not set'; }
+}
+
+function loadRcfSettings(){
+  const inputIds={gp:'setting-gp-key',hs:'setting-hs-key',hun:'setting-hun-key'};
+  ['gp','hs','hun'].forEach(which=>{
+    const key=_rcfGetKey(which);
+    const el=document.getElementById(inputIds[which]);
+    if(key&&el)el.value=key;
+    _rcfApplyToggleBtn(which);
+    _rcfUpdateBadge(which);
+  });
+}
+
+// ── Country normalization ────────────────────────────────────────
+const _RCF_COUNTRY_ALIASES={
+  gr:['greece','grecia','griechenland','ελλάδα','hellas'],
+  de:['germany','deutschland','allemagne','alemania','germania'],
+  gb:['uk','united kingdom','great britain','england','britain'],
+  us:['usa','united states','america','united states of america'],
+  fr:['france','frankreich','francia'],it:['italy','italia','italien'],
+  es:['spain','españa','espagne'],pt:['portugal'],
+  cy:['cyprus','κύπρος','kibris','zypern','chypre'],
+  tr:['turkey','türkiye'],ae:['uae','united arab emirates','emirates','امارات'],
+  sa:['saudi arabia','المملكة العربية السعودية'],eg:['egypt','مصر'],
+  il:['israel','ישראל'],jo:['jordan','الأردن'],lb:['lebanon','لبنان'],
+  ma:['morocco','maroc','المغرب'],tn:['tunisia','tunisie'],
+  al:['albania'],bg:['bulgaria'],ro:['romania'],rs:['serbia'],hr:['croatia'],
+  pl:['poland','polska'],hu:['hungary'],at:['austria','österreich'],
+  ch:['switzerland','schweiz','suisse'],nl:['netherlands','nederland','holland'],
+  be:['belgium','belgique'],dk:['denmark','danmark'],se:['sweden','sverige'],
+  no:['norway','norge'],fi:['finland','suomi'],ie:['ireland'],
+  in:['india','bharat'],cn:['china','中国'],jp:['japan','日本'],
+  th:['thailand'],sg:['singapore'],au:['australia'],ca:['canada'],
+  br:['brazil','brasil'],za:['south africa'],ng:['nigeria'],ke:['kenya'],
+  qa:['qatar','قطر'],kw:['kuwait'],ir:['iran','ایران'],
+};
+const _rcfCountryMap={};
+Object.entries(_RCF_COUNTRY_ALIASES).forEach(([code,aliases])=>{
+  _rcfCountryMap[code]=code;
+  aliases.forEach(a=>{ _rcfCountryMap[a.toLowerCase()]=code; });
+});
+function _rcfNormalizeCountry(raw){
+  return _rcfCountryMap[(raw||'').toLowerCase().trim()]||(raw||'').toLowerCase().trim();
+}
+
+// ── Type label ───────────────────────────────────────────────────
+const _RCF_TYPE_LABELS={
+  hospital:'🏥 Hospital',clinic:'🏢 Clinic',physical_therapy:'🏋️ Physical Therapy',
+  doctor:'👨‍⚕️ Doctor',ground_ambulance:'🚑 Ground Ambulance',air_ambulance:'✈️ Air Ambulance',
+  tpa:'🤝 TPA',insurance:'🛡️ Insurance',reinsurance:'♻️ Reinsurance',ipmi:'🌐 IPMI',
+};
+function _rcfTypeLabel(t){ return _RCF_TYPE_LABELS[t]||t||''; }
+
+// ── Provider type auto-correction ────────────────────────────────
+function _rcfFixType(p){
+  const n=(p.name||'').toLowerCase();
+  if(/air.?ambulance|air.?rescue|aeromedical|\bhems\b|medevac|luftrettung|luftambulanz/i.test(n))
+    p.type='air_ambulance';
+  else if(/\bambulance\b|ambulanz|rettungsdienst|ambulans|ambulância/i.test(n))
+    p.type='ground_ambulance';
+  else if(/\bipmi\b|international.?private.?medical|expat.?insur|expat.?health|global.?health.?insur/i.test(n))
+    p.type='ipmi';
+}
+
+// ── JSON parse helper ────────────────────────────────────────────
+function _rcfParseJSON(raw){
+  let c=raw.trim().replace(/^```json\s*/,'').replace(/^```\s*/,'').replace(/```\s*$/,'').trim();
+  const m=c.match(/\{[\s\S]*\}/); if(m)c=m[0];
+  return JSON.parse(c.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g,''));
+}
+
+// ── Progress helpers ─────────────────────────────────────────────
+function _rcfStep(n,state){
+  const el=document.getElementById('rcf-step-'+n);
+  const dot=document.getElementById('rcf-dot-'+n);
+  if(!el)return;
+  if(state==='active'){
+    el.style.color='var(--hwa-navy)'; el.style.fontWeight='600';
+    if(dot){dot.style.background='var(--hwa-navy)';dot.style.color='#fff';}
+    const ps=document.getElementById('rcf-progress-status');
+    if(ps)ps.textContent=el.textContent.trim()+'…';
+  } else if(state==='done'){
+    el.style.color='#1a8a4a';
+    if(dot){dot.style.background='#1a8a4a';dot.style.color='#fff';dot.textContent='✓';}
+  } else {
+    el.style.color='var(--text-dim)'; el.style.fontWeight='400';
+    if(dot){dot.style.background='#e5e7eb';dot.style.color='';}
+  }
+}
+function _rcfProgress(pct,msg){
+  const bar=document.getElementById('rcf-progress-bar');
+  if(bar)bar.style.width=pct+'%';
+  const ps=document.getElementById('rcf-progress-status');
+  if(msg&&ps)ps.textContent=msg;
+}
+
+// ── Email prompt ─────────────────────────────────────────────────
+const RCF_EMAIL_PROMPT=`You are Dr. Sami's email assistant at HealthWatch Assistance S.A. (HWA), Thermi, Thessaloniki, Greece.
+HWA is a leading international medical assistance and TPA company serving: AegisInsurance, Canopius, Argo Group, HDI Global, Prime Cyprus Group, GBG Group.
+
+Return ONLY valid JSON — no markdown, no backticks, no prose:
+{"subject": "...", "body": "..."}
+CRITICAL JSON RULES: Use \\n for line breaks. Escape double-quotes inside strings as \\".
+
+══════════════════════════════════════════════
+IF provider type = "insurance" OR "reinsurance":
+══════════════════════════════════════════════
+CRITICAL: HWA is PROPOSING TO PROVIDE services TO this insurance/reinsurance company. They are a potential HWA client. This is a service proposal — NOT a network invitation.
+
+SUBJECT: "Medical Assistance & Claims Services Proposal — HealthWatch Assistance S.A. & [Company Name]"
+
+PARAGRAPH 1 — Introduction (personalise with company name and country):
+"Dear [contact name / Claims Director or Medical Director of {company name}],\\nMy name is Dr. Sami, Medical Officer at HealthWatch Assistance S.A. (HWA), a specialist international medical assistance and TPA company headquartered in Thessaloniki, Greece. I am writing to propose our medical assistance services and provider network to {company name} for your policyholders travelling to or residing in Greece, Cyprus, and across our wider territory."
+
+PARAGRAPH 2 — Services HWA proposes — MUST include ALL bullet points:
+"HWA proposes to provide {company name} with the following services:\\n\\n• 24/7 Medical Case Management — multilingual coordinators handling policyholders' emergencies from first notification through to discharge or repatriation; hospital admission facilitation and direct billing\\n• HWA Medical Network in Greece & Cyprus — curated network of vetted hospitals, specialist clinics, GPs, diagnostic centres, and pharmacies across mainland Greece, all major islands, and Cyprus; direct billing and pre-agreed tariffs\\n• Guarantee of Payment (GOP) — rapid GOP issuance to Greek and Cypriot providers, eliminating out-of-pocket payments for your clients\\n• Repatriation & Medical Escorts — full coordination of commercial repatriations (MEDIF, airline liaison, escort) and air ambulance repatriation for critical patients\\n• Cost Containment & Audit — medical bill review and negotiation, pre-authorisation, medical necessity review, and fraud assessment\\n• Customised AI Evaluation — AI-powered assessment of medical and non-medical claims, automated review of insurance policy coverage, and identification of discrepancies between submitted claims and policy terms — reducing claims leakage and accelerating settlement decisions\\n• On-Ground Support — home nursing, physiotherapy, medical equipment hire, pharmacy delivery, and interpreter services"
+
+PARAGRAPH 3 — Value proposition (2 sentences, reference company's country/market):
+Explain why partnering with HWA makes commercial sense for {company name} — reduced claims ratio, AI-driven cost control, no in-house medical desk needed in Greece/Cyprus, and guaranteed quality of care for policyholders.
+
+PARAGRAPH 4 — Call to action:
+"I would welcome a short call to present our service model and AI evaluation capabilities in detail. Please reply to this email or reach me directly at sami@healthwatch.gr."
+
+CLOSING:
+"Kind regards,\\nDr. Sami\\nMedical Officer\\nHealthWatch Assistance S.A.\\nThermi, Thessaloniki, Greece\\nEmail: sami@healthwatch.gr\\nwww.healthwatch.gr"
+
+══════════════════════════════════════════════
+IF provider type = "tpa":
+══════════════════════════════════════════════
+CRITICAL: HWA is PROPOSING TO PROVIDE services TO this TPA or assistance company. They are a potential HWA client. This is a service proposal — NOT a network invitation.
+
+SUBJECT: "Medical Assistance Services & Provider Network Proposal — HealthWatch Assistance S.A. & [Company Name]"
+
+PARAGRAPH 1 — Introduction (personalise with company name and country):
+"Dear [contact name / Operations Director or Medical Director of {company name}],\\nMy name is Dr. Sami, Medical Officer at HealthWatch Assistance S.A. (HWA), a specialist international medical assistance and TPA company headquartered in Thessaloniki, Greece. I am writing to propose our assistance services, provider network, and AI-powered claims tools to {company name} for cases involving Greece, Cyprus, and our wider covered territories."
+
+PARAGRAPH 2 — Services HWA proposes — MUST include ALL bullet points:
+"HWA proposes to provide {company name} with the following services:\\n\\n• 24/7 Medical Case Management — multilingual coordinators for your policyholders' or members' emergencies in Greece and Cyprus; hospital admission, direct billing, and full case follow-up\\n• HWA Medical Network in Greece & Cyprus — access to our vetted network of hospitals, specialist clinics, GPs, diagnostic centres, and pharmacies across mainland Greece, all major islands, and Cyprus; direct billing and pre-negotiated tariffs\\n• Guarantee of Payment (GOP) — rapid GOP issuance to local providers on your behalf\\n• Repatriation & Medical Escorts — commercial and air ambulance repatriation coordination for complex cases\\n• Cost Containment & Audit — medical bill review, negotiation, pre-authorisation, and fraud assessment to protect your clients' claims budget\\n• Customised AI Evaluation — AI-powered review of medical and non-medical claims, automated assessment of insurance policy coverage, and flagging of inconsistencies between claims and policy terms — helping your team make faster, more accurate settlement decisions\\n• On-Ground Support — home nursing, medical equipment, pharmacy delivery, and interpreter services post-discharge"
+
+PARAGRAPH 3 — Value proposition (2 sentences, reference company's territory/clients):
+Explain that HWA acts as a seamless local extension of {company name}'s operations in Greece and Cyprus — a single point of contact for the entire assistance chain, with AI tools that reduce manual workload and improve claims accuracy.
+
+PARAGRAPH 4 — Call to action:
+"I would welcome the opportunity to arrange a call with your operations or medical team to discuss how HWA can support {company name}'s cases in our territories. Please reply to this email or reach me directly at sami@healthwatch.gr."
+
+CLOSING:
+"Kind regards,\\nDr. Sami\\nMedical Officer\\nHealthWatch Assistance S.A.\\nThermi, Thessaloniki, Greece\\nEmail: sami@healthwatch.gr\\nwww.healthwatch.gr"
+
+══════════════════════════════════════════════
+IF provider type = "ipmi":
+══════════════════════════════════════════════
+CRITICAL: HWA is PROPOSING TO PROVIDE services TO this IPMI (International Private Medical Insurance) company. They are a potential HWA client. This is a service proposal — NOT a network invitation.
+
+SUBJECT: "Medical Assistance & IPMI Support Services Proposal — HealthWatch Assistance S.A. & [Company Name]"
+
+PARAGRAPH 1 — Introduction (personalise with company name and country):
+"Dear [contact name / Medical Director or Operations Director of {company name}],\\nMy name is Dr. Sami, Medical Officer at HealthWatch Assistance S.A. (HWA), a specialist international medical assistance and TPA company headquartered in Thessaloniki, Greece. I am reaching out to propose our medical assistance, case management, and network services to {company name} in support of your internationally mobile members in Greece, Cyprus, and our broader covered territories."
+
+PARAGRAPH 2 — Services HWA proposes — MUST include ALL bullet points:
+"HWA proposes to provide {company name} with the following services:\\n\\n• 24/7 Medical Case Management — multilingual coordinators supporting your expatriate and globally mobile policyholders from first notification through to discharge or repatriation; hospital admission facilitation and direct billing\\n• HWA Medical Network in Greece & Cyprus — access to our curated network of vetted hospitals, specialist clinics, GPs, diagnostic centres, and pharmacies across mainland Greece, all major islands, and Cyprus; direct billing with pre-agreed IPMI-compatible tariffs\\n• Guarantee of Payment (GOP) — rapid GOP issuance to local providers, eliminating out-of-pocket expenses for your members and reducing reimbursement claims volume\\n• Repatriation & Medical Escorts — full coordination of medical repatriations (commercial MEDIF and air ambulance) for critically ill or injured members requiring transfer to their home country or a higher-level facility\\n• Cost Containment & Audit — medical bill review, negotiation, pre-authorisation, medical necessity review, and fraud assessment tailored to IPMI claims patterns\\n• Customised AI Evaluation — AI-powered assessment of medical and non-medical claims, automated review of IPMI policy coverage and exclusions, and detection of discrepancies between submitted claims and policy terms — reducing claims leakage and accelerating settlement\\n• On-Ground Support — home nursing, physiotherapy, medical equipment hire, pharmacy delivery, and interpreter services for members requiring ongoing post-discharge care"
+
+PARAGRAPH 3 — Value proposition (2 sentences, reference company's international member base):
+Explain why partnering with HWA makes strategic sense for {company name} — a single accountable partner for the entire member journey in Greece and Cyprus, combining local medical expertise with AI-driven cost control and IPMI-grade service standards.
+
+PARAGRAPH 4 — Call to action:
+"I would welcome a short call to present our service model, IPMI-specific capabilities, and AI evaluation tools in detail. Please reply to this email or reach me directly at sami@healthwatch.gr."
+
+CLOSING:
+"Kind regards,\\nDr. Sami\\nMedical Officer\\nHealthWatch Assistance S.A.\\nThermi, Thessaloniki, Greece\\nEmail: sami@healthwatch.gr\\nwww.healthwatch.gr"
+
+══════════════════════════════════════════════
+IF provider type = "air_ambulance":
+══════════════════════════════════════════════
+CRITICAL: HWA is PROPOSING TO PROVIDE services TO this air ambulance company. This is NOT a network invitation. HWA is the service provider. The air ambulance company is the client being approached.
+
+SUBJECT: "Service Proposal: Ground Support for Air Ambulance Operations — HealthWatch Assistance S.A."
+
+PARAGRAPH 1 — Introduction (personalise with company name and country):
+"Dear [contact name / Operations Director of {company name}],\\nMy name is Dr. Sami, Medical Officer at HealthWatch Assistance S.A. (HWA), a specialist medical assistance company headquartered in Thessaloniki, Greece. I am writing to formally propose our ground support and operational services to {company name} for air ambulance missions across our covered territories."
+
+PARAGRAPH 2 — The six services HWA proposes to provide — MUST include ALL six as bullet points:
+"HWA proposes to provide {company name} with the following ground support services:\\n\\n• Ambulance Network in Greece — dedicated ground ambulance coverage across mainland Greece and all major islands, available 24/7 for patient pick-up, hospital-to-airport transfers, and on-scene support\\n• BLS & ALS in Cyprus, North Africa and the Middle East — Basic Life Support and Advanced Life Support ambulance crews available in Cyprus; BLS and ALS coordination through our partner network across North Africa (Egypt, Tunisia, Morocco, Libya) and the Middle East (Jordan, Lebanon, UAE, Saudi Arabia, Israel)\\n• Medical Transport — bedside-to-aircraft stretcher transfers with full clinical handover documentation, airside ambulance access coordination, inter-hospital ground transfers, and liaison with port health and border authorities\\n• Hotel & Accommodation for Medical Crew — pre-negotiated accommodation for flight crews and medical teams at airport locations and city centres across Greece and Cyprus; 24/7 logistics support for layovers, crew changes, and extended missions\\n• Security Advice — pre-mission security briefings for North Africa and Middle East destinations, on-ground liaison in high-risk environments, and emergency escalation contacts in all covered territories\\n• Medical & Equipment Delivery — sourcing and delivery of medical consumables, pharmaceuticals, oxygen systems, and specialist equipment to the aircraft or receiving facility; management of customs and health authority clearance where required"
+
+PARAGRAPH 3 — Why HWA (2 sentences, reference company's country/operational base):
+Explain that HWA operates 24/7 with a dedicated operations team and a single point of contact managing the entire ground chain — so the medical crew can focus entirely on the patient. Reference their base country and typical mission territories.
+
+PARAGRAPH 4 — Call to action:
+"I would welcome the opportunity to speak with your operations team to discuss your mission profiles, territory priorities, and how HWA can be integrated into your standard operating procedures. Please reply to this email or reach me directly at sami@healthwatch.gr."
+
+CLOSING:
+"Warm regards,\\nDr. Sami\\nMedical Officer\\nHealthWatch Assistance S.A.\\nThermi, Thessaloniki, Greece\\nEmail: sami@healthwatch.gr\\nwww.healthwatch.gr"
+
+══════════════════════════════════════════════
+ALL OTHER provider types (medical providers):
+══════════════════════════════════════════════
+Generate a network partnership invitation email inviting the provider to join the HWA Medical Network.
+
+SUBJECT: "Network Partnership Invitation — HealthWatch Assistance & [Provider Name]"
+
+PARAGRAPH 1 — Salutation + Introduction:
+"Dear [Dr./Mr./Ms. Last Name or Medical Director of Provider Name],\\nMy name is Dr. Sami, Medical Officer at HealthWatch Assistance S.A. (HWA), a leading international medical assistance and TPA company based in Thessaloniki, Greece, serving major Lloyd's and global insurers including AegisInsurance, Canopius, Argo Group, HDI Global, Prime Cyprus Group, and GBG Group."
+
+PARAGRAPH 2 — Why THIS provider (specialty-driven, 3 sentences):
+Be specific to the provider's type and specialty — hospital: emergency/surgical; clinic: specialty focus; physical therapy: post-injury rehab; doctor: specialist access. Reference actual city and specialty.
+
+PARAGRAPH 3 — What HWA offers:
+"Joining the HWA Medical Network means your facility will receive direct patient referrals from international insurance companies, with guaranteed payment through our cashless or reimbursement system — no administrative burden on your side. We handle all pre-authorizations, documentation, and insurer coordination so your team focuses only on care. Our network covers patients from over 30 countries."
+
+PARAGRAPH 4 — Call to action:
+"I would welcome the opportunity to schedule a brief call or video meeting to discuss our cooperation agreement. Please reply to this email or contact me at sami@healthwatch.gr."
+
+CLOSING:
+"Warm regards,\\nDr. Sami\\nMedical Officer\\nHealthWatch Assistance S.A.\\nThermi, Thessaloniki, Greece\\nEmail: sami@healthwatch.gr\\nwww.healthwatch.gr"
+
+IMPORTANT: Write freshly for this specific provider. Reference their actual name, city, and type. Tone: formal, confident. Length: 250–350 words.`;
+
+// ── Main Contact Finder ──────────────────────────────────────────
+async function runRepContactFinder(){
+  const name=(document.getElementById('rcf-name')?.value||'').trim();
+  const country=(document.getElementById('rcf-country')?.value||'').trim();
+  if(!name){ toast('Enter a provider name','error'); return; }
+  if(!country){ toast('Enter a country','error'); return; }
+  const ak=getAnthropicKey();
+  if(!ak){ toast('Set your Anthropic API key in Settings first','error'); return; }
+
+  const city=(document.getElementById('rcf-city')?.value||'').trim();
+  const website=(document.getElementById('rcf-website')?.value||'').trim();
+  const type=document.getElementById('rcf-type')?.value||'';
+  const extra=(document.getElementById('rcf-extra')?.value||'').trim();
+
+  const btn=document.getElementById('rcf-search-btn');
+  btn.disabled=true; btn.textContent='⏳ Searching…';
+  document.getElementById('rcf-progress').style.display='block';
+  document.getElementById('rcf-result').style.display='none';
+  document.getElementById('rcf-status').textContent='';
+  _rcfStep(0,'active'); _rcfProgress(5,'Starting search…');
+
+  let found={name,country,city,website:'',email:'',email_confidence:'',phone:'',address:'',
+    contact_person:'',contact_title:'',linkedin_url:'',linkedin_verified:false,
+    type:type||'',cooperation_score:70,why_hwa:'',notes:'',_sources:[]};
+
+  // ── STEP 0: Google Places ──────────────────────────────────────
+  const gpKey=_rcfGetKey('gp');
+  if(gpKey&&_rcfEnabled('gp')){
+    try{
+      const q=`${name} ${city||''} ${country}`.trim();
+      const gpResp=await fetch('https://places.googleapis.com/v1/places:searchText',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','X-Goog-Api-Key':gpKey,
+          'X-Goog-FieldMask':'places.displayName,places.formattedAddress,places.nationalPhoneNumber,places.internationalPhoneNumber,places.websiteUri'},
+        body:JSON.stringify({textQuery:q,maxResultCount:3,languageCode:'en'})
+      });
+      if(gpResp.ok){
+        const gpData=await gpResp.json();
+        const best=(gpData.places||[])[0];
+        if(best){
+          if(best.internationalPhoneNumber||best.nationalPhoneNumber)
+            found.phone=best.internationalPhoneNumber||best.nationalPhoneNumber;
+          if(best.websiteUri&&!found.website)found.website=best.websiteUri;
+          if(best.formattedAddress)found.address=best.formattedAddress;
+          found._sources.push('Google Places');
+        }
+      }
+    }catch(e){}
+  }
+  _rcfStep(0,'done'); _rcfStep(1,'active'); _rcfProgress(25,'Checking Healthsites.io & Hunter.io…');
+
+  // ── STEP 1a: Healthsites.io ────────────────────────────────────
+  const hsKey=_rcfGetKey('hs');
+  if(hsKey&&_rcfEnabled('hs')&&type&&['hospital','clinic','doctor','physical_therapy'].includes(type)){
+    try{
+      const HS_TAG={hospital:'hospital',clinic:'clinic',doctor:'doctors',physical_therapy:'physiotherapist'};
+      const tag=HS_TAG[type]||'hospital';
+      const hsCountry=_rcfNormalizeCountry(country);
+      const hsResp=await fetch(`https://healthsites.io/api/v2/facilities/?api-key=${encodeURIComponent(hsKey)}&country=${encodeURIComponent(hsCountry)}&tag=${tag}&page=1`,{headers:{Accept:'application/json'}});
+      if(hsResp.ok){
+        const hsData=await hsResp.json();
+        const match=(hsData.results||[]).find(f=>{
+          const n=(f.attributes?.name||f.name||'').toLowerCase();
+          return n.includes(name.toLowerCase().split(' ')[0])||name.toLowerCase().includes(n.split(' ')[0]);
+        });
+        if(match){
+          const a=match.attributes||{};
+          if(a['contact:email']&&!found.email){found.email=a['contact:email'];found.email_confidence='verified';found._sources.push('Healthsites.io');}
+          if(a['contact:phone']&&!found.phone)found.phone=a['contact:phone'];
+          if(a['contact:website']&&!found.website)found.website=a['contact:website'];
+        }
+      }
+    }catch(e){}
+  }
+
+  // ── STEP 1b: Hunter.io ─────────────────────────────────────────
+  const hunKey=_rcfGetKey('hun');
+  const domainSrc=found.website||website;
+  if(hunKey&&_rcfEnabled('hun')&&domainSrc&&!found.email){
+    try{
+      const rawDomain=domainSrc.startsWith('http')?domainSrc:'https://'+domainSrc;
+      const domain=new URL(rawDomain).hostname.replace(/^www\./,'');
+      const hResp=await fetch(`https://api.hunter.io/v2/domain-search?domain=${encodeURIComponent(domain)}&api_key=${hunKey}&limit=5`);
+      if(hResp.ok){
+        const hd=await hResp.json();
+        const emails=(hd.data?.emails||[]).sort((a,b)=>(b.confidence||0)-(a.confidence||0));
+        const best=emails.find(e=>/director|medical|doctor|head|manager|international|coordinator/i.test((e.position||'')+(e.department||'')))||emails[0];
+        if(best?.value){
+          found.email=best.value;
+          found.email_confidence=(best.confidence||0)>=80?'verified':'likely';
+          if(!found.contact_person&&best.first_name&&best.last_name)
+            found.contact_person=`${best.first_name} ${best.last_name}`.trim();
+          if(!found.contact_title&&best.position)found.contact_title=best.position;
+          found._sources.push('Hunter.io');
+        }
+      }
+    }catch(e){}
+  }
+  _rcfStep(1,'done'); _rcfStep(2,'active'); _rcfProgress(50,'Claude AI searching the web…');
+
+  // ── STEP 2: Claude AI with web search ─────────────────────────
+  const knownInfo=[
+    found.phone?`Phone: ${found.phone}`:'',
+    found.website?`Website: ${found.website}`:'',
+    found.address?`Address: ${found.address}`:'',
+    found.email?`Email already found: ${found.email}`:'',
+    website&&!found.website?`User-provided website: ${website}`:'',
+    city?`City: ${city}`:'',
+    extra?`Additional info: ${extra}`:'',
+    type?`Provider type: ${type}`:'',
+  ].filter(Boolean).join('\n');
+
+  const cfPrompt=`CONTACT FINDER TASK — Date: ${new Date().toISOString().split('T')[0]}
+
+Find complete contact details for this specific medical provider:
+Name: ${name}
+Country: ${country}
+${knownInfo}
+
+${found.email?'Email already found — focus on verifying it and finding contact person.':'Priority: find the real email address for international/medical correspondence.'}
+
+Instructions:
+1. Search for the provider's official website. Visit their Contact, About, Team, International Patients pages.
+2. Find and verify:
+   - email: best contact email for international medical correspondence. ONLY return an email you actually find — do not guess patterns.
+   - email_confidence: "verified" if found on official site/directory, "likely" if from reliable data, "uncertain" if guessed
+   - phone: switchboard or international department phone number
+   - website: official website URL
+   - address: full street address
+   - contact_person: full name of Medical Director, International Patients Coordinator, or equivalent (only if you can confirm current role)
+   - contact_title: exact current job title
+   - linkedin_url: confirmed LinkedIn profile URL for the contact person (only if verified)
+   - why_hwa: 1-2 sentences on why HWA (international medical assistance company in Greece) should partner with this provider
+   - cooperation_score: 1-100 score (higher = more relevant for HWA international medical assistance)
+   - notes: useful findings (accreditations, international patient department, languages)
+
+Return ONLY valid JSON — no markdown, no backticks:
+{"name":"${name}","email":"","email_confidence":"verified|likely|uncertain","phone":"","website":"","address":"","city":"${city||''}","country":"${country}","contact_person":"","contact_title":"","linkedin_url":"","linkedin_verified":false,"why_hwa":"","cooperation_score":70,"notes":""}`;
+
+  try{
+    const _msgs=[{role:'user',content:cfPrompt}];
+    let rawText='';
+    const controller=new AbortController();
+    const abort=setTimeout(()=>controller.abort(),120000);
+    for(let _turn=0;_turn<8;_turn++){
+      const resp=await fetch('https://api.anthropic.com/v1/messages',{
+        method:'POST',signal:controller.signal,
+        headers:{'Content-Type':'application/json','x-api-key':ak,'anthropic-version':'2023-06-01',
+          'anthropic-beta':'web-search-2025-03-05','anthropic-dangerous-direct-browser-access':'true'},
+        body:JSON.stringify({model:'claude-opus-4-7',max_tokens:4096,
+          tools:[{type:'web_search_20250305',name:'web_search',max_uses:6}],
+          messages:_msgs})
+      });
+      if(!resp.ok){const err=await resp.json();throw new Error(err.error?.message||'API error');}
+      const _d=await resp.json();
+      const _txt=_d.content.filter(b=>b.type==='text').map(b=>b.text).join('');
+      if(_txt)rawText=_txt;
+      if(_d.stop_reason==='end_turn')break;
+      if(_d.stop_reason==='tool_use'){
+        _msgs.push({role:'assistant',content:_d.content});
+        const _tr=_d.content.filter(b=>b.type==='tool_use').map(b=>({type:'tool_result',tool_use_id:b.id,content:''}));
+        if(_tr.length)_msgs.push({role:'user',content:_tr});
+        else break;
+      } else break;
+    }
+    clearTimeout(abort);
+    if(rawText){
+      try{
+        const ai=_rcfParseJSON(rawText);
+        if(ai.email&&ai.email_confidence!=='uncertain'){
+          if(!found.email||ai.email_confidence==='verified'){found.email=ai.email;found.email_confidence=ai.email_confidence;}
+        }
+        if(ai.phone&&!found.phone)found.phone=ai.phone;
+        if(ai.website&&!found.website)found.website=ai.website;
+        if(ai.address&&!found.address)found.address=ai.address;
+        if(ai.city&&!found.city)found.city=ai.city;
+        if(ai.contact_person)found.contact_person=ai.contact_person;
+        if(ai.contact_title)found.contact_title=ai.contact_title;
+        if(ai.linkedin_url)found.linkedin_url=ai.linkedin_url;
+        if(ai.linkedin_verified)found.linkedin_verified=ai.linkedin_verified;
+        if(ai.why_hwa)found.why_hwa=ai.why_hwa;
+        if(ai.cooperation_score)found.cooperation_score=ai.cooperation_score;
+        if(ai.notes)found.notes=ai.notes;
+        found._sources.push('Claude AI');
+      }catch(e){}
+    }
+  }catch(e){ toast('Claude search error: '+e.message,'error'); }
+
+  _rcfStep(2,'done'); _rcfProgress(100,'Done');
+
+  // ── Render result ──────────────────────────────────────────────
+  found.type=found.type||type||'hospital';
+  _rcfFixType(found);
+  window._rcfCurrentResult=found;
+
+  const confBadge=found.email_confidence==='verified'
+    ?'<span style="font-size:10px;background:#d1fae5;color:#065f46;padding:2px 7px;border-radius:10px;font-weight:700">VERIFIED</span>'
+    :found.email_confidence==='likely'
+    ?'<span style="font-size:10px;background:#fef3c7;color:#92400e;padding:2px 7px;border-radius:10px;font-weight:700">LIKELY</span>':'';
+  const srcBadges=found._sources.map(s=>`<span style="font-size:10px;background:var(--hwa-navy);color:#fff;padding:2px 7px;border-radius:10px">${s}</span>`).join(' ');
+
+  function rcfRow(label,val,extra=''){
+    if(!val)return`<div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;opacity:0.45"><span style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.4px;white-space:nowrap">${label}</span><span style="font-size:13px;color:var(--text-dim);font-style:italic">Not found</span></div>`;
+    const safeVal=val.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    return`<div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px"><div style="flex:1;min-width:0"><span style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.4px;display:block;margin-bottom:2px">${label}</span><span style="font-size:13px;color:var(--hwa-navy);font-weight:500;word-break:break-all">${val}</span>${extra?`<span style="margin-left:6px">${extra}</span>`:''}</div><button onclick="navigator.clipboard.writeText('${safeVal}').then(()=>toast('Copied','success'))" style="flex-shrink:0;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:11px">Copy</button></div>`;
+  }
+
+  document.getElementById('rcf-result').innerHTML=`
+    <div class="card" style="max-width:700px">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:18px;flex-wrap:wrap">
+        <div>
+          <div style="font-size:18px;font-weight:700;color:var(--hwa-navy)">${found.name}</div>
+          <div style="font-size:13px;color:var(--text-dim);margin-top:2px">${_rcfTypeLabel(found.type)} · ${found.city||''} ${found.country}</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${srcBadges}</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px">Cooperation Score</div>
+          <div style="font-size:28px;font-weight:700;color:var(--hwa-navy)">${found.cooperation_score}</div>
+        </div>
+      </div>
+      <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:14px">
+        ${rcfRow('Email',found.email,confBadge)}
+        ${rcfRow('Phone',found.phone)}
+        ${rcfRow('Website',found.website)}
+        ${rcfRow('Address',found.address)}
+        ${rcfRow('Contact Person',found.contact_person+(found.contact_title?' — '+found.contact_title:''))}
+        ${found.linkedin_url?rcfRow('LinkedIn',found.linkedin_url):''}
+      </div>
+      ${found.why_hwa?`<div style="font-size:13px;color:var(--text-dim);background:var(--surface-2,var(--surface));border:1px solid var(--border);padding:12px;border-radius:8px;margin-bottom:14px;line-height:1.6"><strong>Why HWA:</strong> ${found.why_hwa}</div>`:''}
+      ${found.notes?`<div style="font-size:12px;color:var(--text-dim);background:var(--surface-2,var(--surface));border:1px solid var(--border);padding:10px 12px;border-radius:8px;margin-bottom:14px;line-height:1.6"><strong>Notes:</strong> ${found.notes}</div>`:''}
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-primary btn-sm" id="rcf-email-btn" onclick="_rcfGenerateEmail(this)">✉️ Generate Email</button>
+        <button class="btn btn-ghost btn-sm" onclick="runRepContactFinder()">🔄 Search Again</button>
+      </div>
+      <div id="rcf-email-panel" style="display:none;margin-top:18px;border-top:1px solid var(--border);padding-top:18px">
+        <div style="font-size:12px;font-weight:700;color:var(--hwa-navy);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px">✉️ Generated Email</div>
+        <div style="margin-bottom:10px">
+          <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px">Subject</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div id="rcf-email-subject" style="flex:1;font-size:13px;font-weight:600;color:var(--hwa-navy);background:var(--surface);padding:8px 11px;border-radius:6px;border:1px solid var(--border)"></div>
+            <button onclick="navigator.clipboard.writeText(document.getElementById('rcf-email-subject').textContent).then(()=>toast('Subject copied','success'))" style="flex-shrink:0;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:5px 11px;cursor:pointer;font-size:11px">Copy</button>
+          </div>
+        </div>
+        <div style="margin-bottom:14px">
+          <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px">Body</div>
+          <div style="display:flex;align-items:flex-start;gap:8px">
+            <div id="rcf-email-body" style="flex:1;font-size:12px;color:var(--text-dim);background:var(--surface);padding:12px;border-radius:6px;border:1px solid var(--border);white-space:pre-wrap;line-height:1.7;max-height:360px;overflow-y:auto"></div>
+            <button onclick="navigator.clipboard.writeText(document.getElementById('rcf-email-body').textContent).then(()=>toast('Body copied','success'))" style="flex-shrink:0;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:5px 11px;cursor:pointer;font-size:11px">Copy</button>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-primary btn-sm" id="rcf-outlook-btn">📧 Open in Outlook</button>
+          <button class="btn btn-ghost btn-sm" onclick="navigator.clipboard.writeText('Subject: '+document.getElementById('rcf-email-subject').textContent+'\\n\\n'+document.getElementById('rcf-email-body').textContent).then(()=>toast('Email copied','success'))">📋 Copy Full Email</button>
+          <button class="btn btn-ghost btn-sm" onclick="_rcfGenerateEmail(document.getElementById('rcf-email-btn'))">🔄 Regenerate</button>
+        </div>
+      </div>
+    </div>`;
+
+  document.getElementById('rcf-result').style.display='block';
+  document.getElementById('rcf-status').textContent=`Found via: ${found._sources.join(', ')||'search'}`;
+  btn.disabled=false; btn.textContent='🎯 Find Contact Details';
+}
+
+// ── Email generation ─────────────────────────────────────────────
+async function _rcfGenerateEmail(btnEl){
+  const p=window._rcfCurrentResult;
+  if(!p){ toast('Run a search first','error'); return; }
+  const ak=getAnthropicKey();
+  if(!ak){ toast('Set your Anthropic API key in Settings first','error'); return; }
+
+  const orig=btnEl?.innerHTML||'✉️ Generate Email';
+  if(btnEl){ btnEl.disabled=true; btnEl.innerHTML='⏳ Generating…'; }
+
+  const isAirAmb=p.type==='air_ambulance';
+  const isInsurance=p.type==='insurance'||p.type==='reinsurance';
+  const isTpa=p.type==='tpa';
+  const isIpmi=p.type==='ipmi';
+
+  const userMsg=isAirAmb
+    ?`GENERATE HWA SERVICES PROPOSAL EMAIL — type = air_ambulance\nProvider (recipient): ${p.name}\nCity: ${p.city||''}, ${p.country||''}\nContact: ${p.contact_person?p.contact_person+' ('+(p.contact_title||'Operations')+')':`Operations Director of ${p.name}`}\nProvider email: ${p.email||'[not available — leave To: blank]'}\n\nUse the air_ambulance section of your instructions.`
+    :isInsurance
+    ?`GENERATE HWA SERVICES PROPOSAL EMAIL — type = ${p.type}\nProvider (recipient): ${p.name}\nCity: ${p.city||''}, ${p.country||''}\nContact: ${p.contact_person?p.contact_person+' ('+(p.contact_title||'Claims/Medical Director')+')':`Claims Director or Medical Director of ${p.name}`}\nProvider email: ${p.email||'[not available — leave To: blank]'}\n\nUse the insurance/reinsurance section of your instructions.`
+    :isTpa
+    ?`GENERATE HWA SERVICES PROPOSAL EMAIL — type = tpa\nProvider (recipient): ${p.name}\nCity: ${p.city||''}, ${p.country||''}\nContact: ${p.contact_person?p.contact_person+' ('+(p.contact_title||'Operations/Medical Director')+')':`Operations Director or Medical Director of ${p.name}`}\nProvider email: ${p.email||'[not available — leave To: blank]'}\n\nUse the tpa section of your instructions.`
+    :isIpmi
+    ?`GENERATE HWA SERVICES PROPOSAL EMAIL — type = ipmi\nProvider (recipient): ${p.name}\nCity: ${p.city||''}, ${p.country||''}\nContact: ${p.contact_person?p.contact_person+' ('+(p.contact_title||'Medical/Operations Director')+')':`Medical Director or Operations Director of ${p.name}`}\nProvider email: ${p.email||'[not available — leave To: blank]'}\n\nUse the ipmi section of your instructions.`
+    :`Generate cooperation email for:\nProvider: ${p.name}\nType: ${p.type||''}\nCity: ${p.city||''}, ${p.country||''}\nProvider email: ${p.email||'[not available — leave To: blank]'}`;
+
+  try{
+    const resp=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':ak,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:'claude-opus-4-7',max_tokens:2000,system:RCF_EMAIL_PROMPT,messages:[{role:'user',content:userMsg}]})
+    });
+    if(!resp.ok){const err=await resp.json();throw new Error(err.error?.message||'API error '+resp.status);}
+    const data=await resp.json();
+    let raw=data.content.filter(b=>b.type==='text').map(b=>b.text).join('');
+    if(!raw)throw new Error('No response from Claude');
+    const emailData=_rcfParseJSON(raw);
+    p.email_subject=emailData.subject||'Partnership — HealthWatch Assistance';
+    p.email_body=(emailData.body||'').replace(/\\n/g,'\n');
+
+    const subjectEl=document.getElementById('rcf-email-subject');
+    const bodyEl=document.getElementById('rcf-email-body');
+    if(subjectEl)subjectEl.textContent=p.email_subject;
+    if(bodyEl)bodyEl.textContent=p.email_body;
+    const outlookBtn=document.getElementById('rcf-outlook-btn');
+    if(outlookBtn){
+      outlookBtn.onclick=()=>{
+        const a=document.createElement('a');
+        a.href=`mailto:${p.email||''}?subject=${encodeURIComponent(p.email_subject)}&body=${encodeURIComponent(p.email_body)}`;
+        a.click();
+      };
+    }
+    const panel=document.getElementById('rcf-email-panel');
+    if(panel){
+      panel.style.display='block';
+      requestAnimationFrame(()=>panel.scrollIntoView({behavior:'smooth',block:'nearest'}));
+    }
+    toast('Email generated ✓','success');
+  }catch(e){
+    toast('Email generation failed: '+e.message,'error');
+  }finally{
+    if(btnEl){btnEl.disabled=false;btnEl.innerHTML=orig;}
+  }
+}
+
+// ── Clear ────────────────────────────────────────────────────────
+function clearRepContactFinder(){
+  ['rcf-name','rcf-city','rcf-website','rcf-extra'].forEach(id=>{
+    const el=document.getElementById(id);if(el)el.value='';
+  });
+  const c=document.getElementById('rcf-country');if(c)c.value='';
+  const t=document.getElementById('rcf-type');if(t)t.value='';
+  document.getElementById('rcf-progress').style.display='none';
+  document.getElementById('rcf-result').style.display='none';
+  document.getElementById('rcf-status').textContent='';
+  window._rcfCurrentResult=null;
+}
 
 </script>
 </body>
