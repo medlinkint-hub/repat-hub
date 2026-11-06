@@ -4146,7 +4146,7 @@ async function aiSuggestQuoteItems() {
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error.message);
-    let raw = data.content[0].text.trim().replace(/^```json?\s*/i,'').replace(/```\s*$/,'').trim();
+    let raw = aiText(data).trim().replace(/^```json?\s*/i,'').replace(/```\s*$/,'').trim();
     const items = JSON.parse(raw);
     if (!Array.isArray(items)) throw new Error('Bad shape');
     quoteItems = items.map(it => ({ desc: String(it.desc||''), unit: parseFloat(it.unit)||0, qty: parseFloat(it.qty)||1 }));
@@ -4419,7 +4419,7 @@ ${pendingTasks.join('\n') || '(none)'}`;
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error.message);
-    let raw = data.content[0].text.trim().replace(/^```json?\s*/i,'').replace(/```\s*$/,'').trim();
+    let raw = aiText(data).trim().replace(/^```json?\s*/i,'').replace(/```\s*$/,'').trim();
     const suggestions = JSON.parse(raw);
     if (!Array.isArray(suggestions)) throw new Error('Bad response shape');
     showAiSuggestions(caseId, suggestions);
@@ -4768,14 +4768,15 @@ function resetForm() {
 async function saveCase(andEval=false) {
   const d = gatherFormData();
   if (!d.firstname && !d.lastname) { toast('Enter at least the patient name.', 'error'); return; }
-  const id = 'HWA-' + Date.now().toString().slice(-6);
+  const id = newCaseId();
   // Merge extracted fields that didn't have form inputs (flight, contacts, costs, etc.).
   const extras = window.pendingExtractedExtras || {};
   delete window.pendingExtractedExtras;
   const c = { ...extras, ...d, id, status:'new', createdAt: new Date().toISOString(), escort: null };
   cases.unshift(c);
-  await persistCase(c);
-  toast(`Case ${id} saved to cloud.`, 'success');
+  const savedToCloud = await persistCase(c);
+  if (savedToCloud) toast(`Case ${id} saved to cloud.`, 'success');
+  else if (!db) toast(`Case ${id} saved on this device only (cloud not connected).`, 'info');
   refreshDashboard();
   updateActiveCount();
   if (andEval) {
@@ -4788,6 +4789,18 @@ async function saveCase(andEval=false) {
 }
 
 function saveCaseAndEval() { saveCase(true); }
+
+// 'HWA-' + last 6 digits of Date.now() repeats every ~16.7 minutes, and a
+// repeated id silently overwrites the older case in Firestore (.set()).
+// Keep the short format but guarantee uniqueness against loaded cases.
+function newCaseId() {
+  const taken = new Set(cases.map(c => c.id));
+  let id = 'HWA-' + Date.now().toString().slice(-6);
+  while (taken.has(id)) {
+    id = 'HWA-' + Date.now().toString().slice(-6) + '-' + Math.random().toString(36).slice(2, 5).toUpperCase();
+  }
+  return id;
+}
 
 function persist() {
   // Always write to localStorage as fallback. Attachments are stored in their
@@ -4808,12 +4821,16 @@ function caseForStorage(c) {
 
 // Save a single case to Firestore
 async function persistCase(c) {
-  persist(); // localStorage backup always
-  if (!db) return;
+  try { persist(); } // localStorage backup always
+  catch(e) { console.warn('localStorage write failed:', e.message); toast('Local backup failed (browser storage full?).', 'error'); }
+  if (!db) return false;
   try {
     await db.collection('repatriations').doc(c.id).set(caseForStorage(c));
+    return true;
   } catch(e) {
     console.warn('Firestore write failed:', e.message);
+    toast(`Cloud save failed for ${c.id}: ${e.message}. Kept on this device only.`, 'error');
+    return false;
   }
 }
 
@@ -4822,7 +4839,13 @@ async function deleteFromFirestore(id) {
   localStorage.setItem('hwa_cases', JSON.stringify(cases.map(caseForStorage)));
   if (!db) return;
   try { await db.collection('repatriations').doc(id).delete(); }
-  catch(e) { console.warn('Firestore delete failed:', e.message); }
+  catch(e) { console.warn('Firestore delete failed:', e.message); toast('Cloud delete failed: ' + e.message, 'error'); }
+  // Attachments live in their own collection; without this they are orphaned
+  // (patient documents kept after the case is gone).
+  try {
+    const snap = await db.collection('case_attachments').where('caseId', '==', id).get();
+    await Promise.all(snap.docs.map(d => d.ref.delete()));
+  } catch(e) { console.warn('Attachment cleanup failed:', e.message); }
 }
 
 // Load all cases from Firestore into memory
@@ -4882,8 +4905,8 @@ function refreshDashboard() {
   }
   tbody.innerHTML = cases.slice(0,6).map(c => `
     <tr onclick="openCaseModal('${c.id}')" style="cursor:pointer">
-      <td class="td-main">${c.firstname} ${c.lastname}</td>
-      <td>${c.originIata||'?'} → ${c.destIata||'?'}</td>
+      <td class="td-main">${escHtml(c.firstname)} ${escHtml(c.lastname)}</td>
+      <td>${escHtml(c.originIata||'?')} → ${escHtml(c.destIata||'?')}</td>
       <td>${transportBadge(c.transport)}</td>
       <td>${statusBadge(c.status)}</td>
     </tr>
@@ -4903,11 +4926,11 @@ function renderCasesTable(arr) {
   const tbody = document.getElementById('all-cases-tbody');
   tbody.innerHTML = arr.map(c => `
     <tr onclick="openCaseModal('${c.id}')" style="cursor:pointer">
-      <td class="td-main" style="font-family:'DM Mono',monospace;font-size:12px">${c.id}</td>
-      <td class="td-main">${c.firstname} ${c.lastname}</td>
-      <td>${c.originCity||'—'} → ${c.destCity||'—'}</td>
+      <td class="td-main" style="font-family:'DM Mono',monospace;font-size:12px">${escHtml(c.id)}</td>
+      <td class="td-main">${escHtml(c.firstname)} ${escHtml(c.lastname)}</td>
+      <td>${escHtml(c.originCity||'—')} → ${escHtml(c.destCity||'—')}</td>
       <td>${transportBadge(c.transport)}</td>
-      <td>${c.escort ? `<span style="color:var(--cyan);font-size:12px">👤 ${c.escort}</span>` : '<span style="color:var(--text-faint);font-size:12px">—</span>'}</td>
+      <td>${c.escort ? `<span style="color:var(--cyan);font-size:12px">👤 ${escHtml(c.escort)}</span>` : '<span style="color:var(--text-faint);font-size:12px">—</span>'}</td>
       <td>${statusBadge(c.status)}</td>
       <td><button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openCaseModal('${c.id}')">›</button></td>
     </tr>
@@ -4936,7 +4959,7 @@ function transportBadge(t) {
     'ground': ['badge-ground','🚑 Ground']
   };
   const [cls, label] = map[t] || ['badge-completed', t];
-  return `<span class="badge ${cls}">${label}</span>`;
+  return `<span class="badge ${cls}">${escHtml(label)}</span>`;
 }
 
 function statusBadge(s) {
@@ -4944,7 +4967,7 @@ function statusBadge(s) {
     'new': 'badge-new', 'active': 'badge-active', 'pending': 'badge-pending',
     'completed': 'badge-completed', 'critical': 'badge-critical'
   };
-  return `<span class="badge ${map[s]||'badge-completed'}">${s||'new'}</span>`;
+  return `<span class="badge ${map[s]||'badge-completed'}">${escHtml(s||'new')}</span>`;
 }
 
 function populateCaseSelects() {
@@ -5226,7 +5249,9 @@ async function deleteHotel(caseId, idx) {
 // Stored as one Firestore doc per file in collection `case_attachments`, base64
 // encoded. Per-doc Firestore limit is 1MB, so we cap upload size at 800KB
 // (~1.06MB base64) and ask larger files to be compressed.
-const ATTACHMENT_MAX_BYTES = 800 * 1024;
+// Firestore documents are capped at 1 MiB and base64 adds ~33%, so 800 KB
+// files (≈1.07 MB encoded) were rejected. 700 KB encodes to ≈0.93 MB.
+const ATTACHMENT_MAX_BYTES = 700 * 1024;
 
 function attachmentIcon(type) {
   if (!type) return '📎';
@@ -5343,7 +5368,7 @@ async function shareSavedDoc(caseId, idx) {
 
 async function uploadAttachment(caseId, file, category) {
   if (file.size > ATTACHMENT_MAX_BYTES) {
-    toast(`File too large (${formatSize(file.size)}). Max 800 KB per file — compress or split it.`, 'error');
+    toast(`File too large (${formatSize(file.size)}). Max 700 KB per file — compress or split it.`, 'error');
     return;
   }
   const c = cases.find(x => x.id === caseId);
@@ -5375,9 +5400,17 @@ async function uploadAttachment(caseId, file, category) {
   c.attachments.push(att);
   if (typeof db !== 'undefined' && db) {
     try { await db.collection('case_attachments').doc(id).set(att); }
-    catch(e) { console.error('Attachment save failed:', e); toast('Cloud save failed: ' + (e.message||e.code), 'error'); }
+    catch(e) {
+      console.error('Attachment save failed:', e);
+      c.attachments = c.attachments.filter(x => x.id !== id);
+      toast('Cloud save failed: ' + (e.message||e.code), 'error');
+      refreshCaseModalIfOpen();
+      return;
+    }
+    toast(`Uploaded ${file.name}.`, 'success');
+  } else {
+    toast(`${file.name} attached for this session only — cloud is not connected, so it will be lost on reload.`, 'info');
   }
-  toast(`Uploaded ${file.name}.`, 'success');
   refreshCaseModalIfOpen();
 }
 
@@ -5692,6 +5725,7 @@ function updateCaseStatus(id, status) {
     persistCase(c);
     toast(`Status updated to "${status}"`, 'info');
     refreshDashboard();
+    refreshCasesTable();
   }
 }
 
@@ -5878,7 +5912,7 @@ ${ctx}` });
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error.message);
-    let raw = data.content[0].text.trim().replace(/^```json?\s*/i,'').replace(/```\s*$/,'').trim();
+    let raw = aiText(data).trim().replace(/^```json?\s*/i,'').replace(/```\s*$/,'').trim();
     const d = JSON.parse(raw);
     // Apply to form fields without clobbering anything the user already filled.
     const setIf = (id, val) => { const el = document.getElementById(id); if (el && val && !el.value) el.value = val; };
@@ -6258,7 +6292,7 @@ If nothing to update, write "none".`;
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error.message);
-    const text = data.content[0].text;
+    const text = aiText(data);
     renderEvalOutput(text);
     if (/air ambulance/i.test(text)) markTransportRec('air-amb');
     else if (/stretcher/i.test(text)) markTransportRec('stretcher');
@@ -6531,7 +6565,7 @@ Be specific, practical and concise. Use your medical transport expertise.`;
 
     const data = await res.json();
     if (data.error) throw new Error(data.error.message);
-    const text = data.content[0].text;
+    const text = aiText(data);
     document.getElementById('flight-plan-output').textContent = text;
 
     // Build quick-links card
@@ -6615,12 +6649,6 @@ function copyFlightPlan() {
 function saveSerpKey() {}
 function updateSerpStatus() {}
 function searchFlights() { runFlightPlanner(); }
-function renderDemoFlights() {}
-function renderFlightResults() {}
-function selectFlight(el) {
-  document.querySelectorAll('.flight-card').forEach(c => c.classList.remove('selected'));
-  el.classList.add('selected');
-}
 
 // ══════════════════════════════════════════════════════════════════
 // ESCORTS
@@ -6880,7 +6908,7 @@ ${userBreakdown ? userBreakdown + '\n\nUse the line items and amounts above EXAC
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error.message);
-    const content = data.content[0].text;
+    const content = aiText(data);
     document.getElementById('doc-output').textContent = content;
     // Persist onto the case so it's visible next time the case is opened.
     if (c) {
@@ -6986,7 +7014,7 @@ function mdToHtml(src) {
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/(?<!\*)\*([^*\n]+?)\*(?!\*)/g, '<em>$1</em>')
     .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (m, label, url) => /^(https?:|mailto:|tel:)/i.test(url.trim()) ? `<a href="${url.trim()}" target="_blank" rel="noopener noreferrer">${label}</a>` : label);
   const splitRow = r => r.replace(/^\s*\|/,'').replace(/\|\s*$/,'').split('|').map(c => c.trim());
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i].trimEnd();
@@ -7579,7 +7607,7 @@ Rules:
   });
   const data = await res.json();
   if (data.error) throw new Error(data.error.message);
-  let raw = data.content[0].text.trim().replace(/^```json?\s*/i,'').replace(/```\s*$/,'').trim();
+  let raw = aiText(data).trim().replace(/^```json?\s*/i,'').replace(/```\s*$/,'').trim();
   return JSON.parse(raw);
 }
 
@@ -8259,7 +8287,22 @@ function renderExtractionFields(parsed) {
 }
 
 function escHtml(str) {
-  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  if (str === null || str === undefined) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// Concatenate every text block of a Messages API response. Reading
+// content[0].text breaks as soon as the first block is not text (thinking,
+// server-tool use), and gives no hint when the reply was cut off.
+function aiText(data) {
+  const blocks = Array.isArray(data?.content) ? data.content : [];
+  const text = blocks.filter(b => b && b.type === 'text').map(b => b.text).join('');
+  if (!text) {
+    if (data?.stop_reason === 'refusal') throw new Error('The AI declined this request.');
+    throw new Error('The AI returned no text' + (data?.stop_reason ? ` (stop reason: ${data.stop_reason})` : '') + '.');
+  }
+  if (data?.stop_reason === 'max_tokens') console.warn('AI response hit max_tokens and may be truncated.');
+  return text;
 }
 
 function copyRawText() {
@@ -8633,7 +8676,16 @@ CLOSING:
 IMPORTANT: Write freshly for this specific provider. Reference their actual name, city, and type. Tone: formal, confident. Length: 250–350 words.`;
 
 // ── Main Contact Finder ──────────────────────────────────────────
+// Wrapper: any unexpected error used to leave the button stuck on "Searching…".
 async function runRepContactFinder(){
+  try { await _runRepContactFinderImpl(); }
+  catch(e){ console.error('Contact Finder failed:', e); toast('Contact search failed: '+e.message,'error'); }
+  finally {
+    const b=document.getElementById('rcf-search-btn');
+    if(b){ b.disabled=false; b.textContent='🎯 Find Contact Details'; }
+  }
+}
+async function _runRepContactFinderImpl(){
   const name=(document.getElementById('rcf-name')?.value||'').trim();
   const country=(document.getElementById('rcf-country')?.value||'').trim();
   if(!name){ toast('Enter a provider name','error'); return; }
@@ -8653,7 +8705,7 @@ async function runRepContactFinder(){
   document.getElementById('rcf-status').textContent='';
   _rcfStep(0,'active'); _rcfProgress(5,'Starting search…');
 
-  let found={name,country,city,website:'',email:'',email_confidence:'',phone:'',address:'',
+  let found={name,country,city,website:website||'',email:'',email_confidence:'',phone:'',address:'',
     contact_person:'',contact_title:'',linkedin_url:'',linkedin_verified:false,
     type:type||'',cooperation_score:70,why_hwa:'',notes:'',_sources:[]};
 
@@ -8785,11 +8837,14 @@ Return ONLY valid JSON — no markdown, no backticks:
           tools:[{type:'web_search_20250305',name:'web_search',max_uses:6}],
           messages:_msgs})
       });
-      if(!resp.ok){const err=await resp.json();throw new Error(err.error?.message||'API error');}
+      if(!resp.ok){const err=await resp.json().catch(()=>({}));throw new Error(err.error?.message||('API error '+resp.status));}
       const _d=await resp.json();
       const _txt=_d.content.filter(b=>b.type==='text').map(b=>b.text).join('');
       if(_txt)rawText=_txt;
       if(_d.stop_reason==='end_turn')break;
+      // Server-side web search pauses long turns with 'pause_turn'; send the
+      // assistant content back unchanged so the API resumes where it stopped.
+      if(_d.stop_reason==='pause_turn'){_msgs.push({role:'assistant',content:_d.content});continue;}
       if(_d.stop_reason==='tool_use'){
         _msgs.push({role:'assistant',content:_d.content});
         const _tr=_d.content.filter(b=>b.type==='tool_use').map(b=>({type:'tool_result',tool_use_id:b.id,content:''}));
@@ -8831,25 +8886,25 @@ Return ONLY valid JSON — no markdown, no backticks:
     ?'<span style="font-size:10px;background:#d1fae5;color:#065f46;padding:2px 7px;border-radius:10px;font-weight:700">VERIFIED</span>'
     :found.email_confidence==='likely'
     ?'<span style="font-size:10px;background:#fef3c7;color:#92400e;padding:2px 7px;border-radius:10px;font-weight:700">LIKELY</span>':'';
-  const srcBadges=found._sources.map(s=>`<span style="font-size:10px;background:var(--hwa-navy);color:#fff;padding:2px 7px;border-radius:10px">${s}</span>`).join(' ');
+  const srcBadges=[...new Set(found._sources)].map(s=>`<span style="font-size:10px;background:var(--hwa-navy);color:#fff;padding:2px 7px;border-radius:10px">${escHtml(s)}</span>`).join(' ');
 
   function rcfRow(label,val,extra=''){
     if(!val)return`<div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;opacity:0.45"><span style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.4px;white-space:nowrap">${label}</span><span style="font-size:13px;color:var(--text-dim);font-style:italic">Not found</span></div>`;
-    const safeVal=val.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-    return`<div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px"><div style="flex:1;min-width:0"><span style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.4px;display:block;margin-bottom:2px">${label}</span><span style="font-size:13px;color:var(--hwa-navy);font-weight:500;word-break:break-all">${val}</span>${extra?`<span style="margin-left:6px">${extra}</span>`:''}</div><button onclick="navigator.clipboard.writeText('${safeVal}').then(()=>toast('Copied','success'))" style="flex-shrink:0;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:11px">Copy</button></div>`;
+    val=String(val);
+    return`<div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px"><div style="flex:1;min-width:0"><span style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.4px;display:block;margin-bottom:2px">${label}</span><span style="font-size:13px;color:var(--hwa-navy);font-weight:500;word-break:break-all">${escHtml(val)}</span>${extra?`<span style="margin-left:6px">${extra}</span>`:''}</div><button data-copy="${escHtml(val)}" onclick="navigator.clipboard.writeText(this.dataset.copy).then(()=>toast('Copied','success'))" style="flex-shrink:0;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:11px">Copy</button></div>`;
   }
 
   document.getElementById('rcf-result').innerHTML=`
     <div class="card" style="max-width:700px">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:18px;flex-wrap:wrap">
         <div>
-          <div style="font-size:18px;font-weight:700;color:var(--hwa-navy)">${found.name}</div>
-          <div style="font-size:13px;color:var(--text-dim);margin-top:2px">${_rcfTypeLabel(found.type)} · ${found.city||''} ${found.country}</div>
+          <div style="font-size:18px;font-weight:700;color:var(--hwa-navy)">${escHtml(found.name)}</div>
+          <div style="font-size:13px;color:var(--text-dim);margin-top:2px">${escHtml(_rcfTypeLabel(found.type))} · ${escHtml(found.city||'')} ${escHtml(found.country)}</div>
           <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${srcBadges}</div>
         </div>
         <div style="text-align:right">
           <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px">Cooperation Score</div>
-          <div style="font-size:28px;font-weight:700;color:var(--hwa-navy)">${found.cooperation_score}</div>
+          <div style="font-size:28px;font-weight:700;color:var(--hwa-navy)">${escHtml(found.cooperation_score??'—')}</div>
         </div>
       </div>
       <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:14px">
@@ -8857,11 +8912,11 @@ Return ONLY valid JSON — no markdown, no backticks:
         ${rcfRow('Phone',found.phone)}
         ${rcfRow('Website',found.website)}
         ${rcfRow('Address',found.address)}
-        ${rcfRow('Contact Person',found.contact_person+(found.contact_title?' — '+found.contact_title:''))}
+        ${rcfRow('Contact Person',[found.contact_person,found.contact_title].filter(Boolean).join(' — '))}
         ${found.linkedin_url?rcfRow('LinkedIn',found.linkedin_url):''}
       </div>
-      ${found.why_hwa?`<div style="font-size:13px;color:var(--text-dim);background:var(--surface-2,var(--surface));border:1px solid var(--border);padding:12px;border-radius:8px;margin-bottom:14px;line-height:1.6"><strong>Why HWA:</strong> ${found.why_hwa}</div>`:''}
-      ${found.notes?`<div style="font-size:12px;color:var(--text-dim);background:var(--surface-2,var(--surface));border:1px solid var(--border);padding:10px 12px;border-radius:8px;margin-bottom:14px;line-height:1.6"><strong>Notes:</strong> ${found.notes}</div>`:''}
+      ${found.why_hwa?`<div style="font-size:13px;color:var(--text-dim);background:var(--surface-2,var(--surface));border:1px solid var(--border);padding:12px;border-radius:8px;margin-bottom:14px;line-height:1.6"><strong>Why HWA:</strong> ${escHtml(found.why_hwa)}</div>`:''}
+      ${found.notes?`<div style="font-size:12px;color:var(--text-dim);background:var(--surface-2,var(--surface));border:1px solid var(--border);padding:10px 12px;border-radius:8px;margin-bottom:14px;line-height:1.6"><strong>Notes:</strong> ${escHtml(found.notes)}</div>`:''}
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn btn-primary btn-sm" id="rcf-email-btn" onclick="_rcfGenerateEmail(this)">✉️ Generate Email</button>
         <button class="btn btn-ghost btn-sm" onclick="runRepContactFinder()">🔄 Search Again</button>
